@@ -55,11 +55,10 @@ export default function LoginScreen() {
         behavior={Platform.select({ ios: 'padding', android: undefined })}
         style={styles.keyboard}>
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>DEFENSE-READY NILM MVP</Text>
-          <Text style={styles.title}>Residential energy monitoring with real auth and real data flow.</Text>
+          <Text style={styles.eyebrow}>CAPSTONE PROJECT</Text>
+          <Text style={styles.title}>AppliSense</Text>
           <Text style={styles.subtitle}>
-            Admins manage users, rooms, and devices. Tenants see current usage, likely appliance,
-            and estimated cost from live or simulated readings.
+            Smart Appliance Detection and Energy Monitoring Using Non-Intrusive Load Analysis.
           </Text>
         </View>
 
@@ -86,12 +85,6 @@ export default function LoginScreen() {
           />
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <Button label="Login" loading={submitting} onPress={handleLogin} />
-          <View style={styles.credentialsBox}>
-            <Text style={styles.credentialsTitle}>Demo credentials</Text>
-            <Text style={styles.credentialsText}>Admin: `admin@nilm.local` / `Admin123!`</Text>
-            <Text style={styles.credentialsText}>Tenant: `juan@nilm.local` / `Tenant123!`</Text>
-            <Text style={styles.credentialsText}>Tenant: `maria@nilm.local` / `Tenant123!`</Text>
-          </View>
         </SectionCard>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -136,19 +129,5 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.danger,
     fontWeight: '600',
-  },
-  credentialsBox: {
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.surfaceMuted,
-    padding: 14,
-    gap: 4,
-  },
-  credentialsTitle: {
-    color: theme.colors.text,
-    fontWeight: '800',
-  },
-  credentialsText: {
-    color: theme.colors.textMuted,
-    lineHeight: 20,
   },
 });
