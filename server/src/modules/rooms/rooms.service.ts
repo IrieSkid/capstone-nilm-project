@@ -1,0 +1,244 @@
+import { ResultSetHeader, RowDataPacket } from 'mysql2';
+
+import { pool } from '../../config/db';
+import { AppError } from '../../shared/utils/app-error';
+import { handleDatabaseError } from '../../shared/utils/database-error';
+
+interface RoomRow extends RowDataPacket {
+  room_id: number;
+  room_name: string;
+  room_rate_per_kwh: number;
+  room_status: 'available' | 'occupied';
+  tenant_id: number;
+  tenant_name: string;
+  tenant_email: string;
+  device_id: number;
+  device_name: string;
+  device_identifier: string;
+}
+
+interface ExistsRow extends RowDataPacket {
+  id: number;
+}
+
+function mapRoomRow(row: RoomRow) {
+  return {
+    roomId: row.room_id,
+    roomName: row.room_name,
+    roomRatePerKwh: row.room_rate_per_kwh,
+    roomStatus: row.room_status,
+    tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
+    tenantEmail: row.tenant_email,
+    deviceId: row.device_id,
+    deviceName: row.device_name,
+    deviceIdentifier: row.device_identifier,
+  };
+}
+
+async function assertTenantExists(tenantId: number) {
+  const [rows] = await pool.query<ExistsRow[]>(
+    `
+      SELECT u.user_id AS id
+      FROM tblusers u
+      INNER JOIN tblroles r ON r.role_id = u.user_role_id
+      WHERE u.user_id = ? AND r.role_name = 'tenant'
+      LIMIT 1
+    `,
+    [tenantId],
+  );
+
+  if (!rows[0]) {
+    throw new AppError(400, 'Room must reference a valid tenant.');
+  }
+}
+
+async function assertDeviceExists(deviceId: number) {
+  const [rows] = await pool.query<ExistsRow[]>(
+    `
+      SELECT device_id AS id
+      FROM tbldevices
+      WHERE device_id = ?
+      LIMIT 1
+    `,
+    [deviceId],
+  );
+
+  if (!rows[0]) {
+    throw new AppError(400, 'Room must reference a valid device.');
+  }
+}
+
+async function assertDeviceIsAvailable(deviceId: number, currentRoomId?: number) {
+  const [rows] = await pool.query<ExistsRow[]>(
+    `
+      SELECT room_id AS id
+      FROM tblrooms
+      WHERE room_device_id = ?
+        AND (? IS NULL OR room_id <> ?)
+      LIMIT 1
+    `,
+    [deviceId, currentRoomId ?? null, currentRoomId ?? null],
+  );
+
+  if (rows[0]) {
+    throw new AppError(409, 'Selected device is already assigned to another room.');
+  }
+}
+
+export async function listRooms() {
+  const [rows] = await pool.query<RoomRow[]>(
+    `
+      SELECT
+        room.room_id,
+        room.room_name,
+        room.room_rate_per_kwh,
+        room.room_status,
+        tenant.user_id AS tenant_id,
+        tenant.user_name AS tenant_name,
+        tenant.user_email AS tenant_email,
+        device.device_id AS device_id,
+        device.device_name AS device_name,
+        device.device_identifier AS device_identifier
+      FROM tblrooms room
+      INNER JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      INNER JOIN tbldevices device ON device.device_id = room.room_device_id
+      ORDER BY room.room_id
+    `,
+  );
+
+  return rows.map(mapRoomRow);
+}
+
+async function getRoomById(roomId: number) {
+  const [rows] = await pool.query<RoomRow[]>(
+    `
+      SELECT
+        room.room_id,
+        room.room_name,
+        room.room_rate_per_kwh,
+        room.room_status,
+        tenant.user_id AS tenant_id,
+        tenant.user_name AS tenant_name,
+        tenant.user_email AS tenant_email,
+        device.device_id AS device_id,
+        device.device_name AS device_name,
+        device.device_identifier AS device_identifier
+      FROM tblrooms room
+      INNER JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      INNER JOIN tbldevices device ON device.device_id = room.room_device_id
+      WHERE room.room_id = ?
+      LIMIT 1
+    `,
+    [roomId],
+  );
+
+  if (!rows[0]) {
+    throw new AppError(404, 'Room not found.');
+  }
+
+  return mapRoomRow(rows[0]);
+}
+
+export async function createRoom(input: {
+  room_name: string;
+  room_tenant_id: number;
+  room_device_id: number;
+  room_rate_per_kwh: number;
+  room_status: 'available' | 'occupied';
+}) {
+  await assertTenantExists(input.room_tenant_id);
+  await assertDeviceExists(input.room_device_id);
+  await assertDeviceIsAvailable(input.room_device_id);
+
+  try {
+    const [result] = await pool.query<ResultSetHeader>(
+      `
+        INSERT INTO tblrooms (
+          room_name,
+          room_tenant_id,
+          room_device_id,
+          room_rate_per_kwh,
+          room_status
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        input.room_name,
+        input.room_tenant_id,
+        input.room_device_id,
+        input.room_rate_per_kwh,
+        input.room_status,
+      ],
+    );
+
+    return getRoomById(result.insertId);
+  } catch (error) {
+    handleDatabaseError(error, 'Room name or device assignment already exists.');
+  }
+}
+
+export async function updateRoom(
+  roomId: number,
+  input: Partial<{
+    room_name: string;
+    room_tenant_id: number;
+    room_device_id: number;
+    room_rate_per_kwh: number;
+    room_status: 'available' | 'occupied';
+  }>,
+) {
+  await getRoomById(roomId);
+
+  if (input.room_tenant_id !== undefined) {
+    await assertTenantExists(input.room_tenant_id);
+  }
+
+  if (input.room_device_id !== undefined) {
+    await assertDeviceExists(input.room_device_id);
+    await assertDeviceIsAvailable(input.room_device_id, roomId);
+  }
+
+  const fields: string[] = [];
+  const values: Array<string | number> = [];
+
+  if (input.room_name !== undefined) {
+    fields.push('room_name = ?');
+    values.push(input.room_name);
+  }
+
+  if (input.room_tenant_id !== undefined) {
+    fields.push('room_tenant_id = ?');
+    values.push(input.room_tenant_id);
+  }
+
+  if (input.room_device_id !== undefined) {
+    fields.push('room_device_id = ?');
+    values.push(input.room_device_id);
+  }
+
+  if (input.room_rate_per_kwh !== undefined) {
+    fields.push('room_rate_per_kwh = ?');
+    values.push(input.room_rate_per_kwh);
+  }
+
+  if (input.room_status !== undefined) {
+    fields.push('room_status = ?');
+    values.push(input.room_status);
+  }
+
+  try {
+    await pool.query(
+      `
+        UPDATE tblrooms
+        SET ${fields.join(', ')}
+        WHERE room_id = ?
+      `,
+      [...values, roomId],
+    );
+  } catch (error) {
+    handleDatabaseError(error, 'Room name or device assignment already exists.');
+  }
+
+  return getRoomById(roomId);
+}
