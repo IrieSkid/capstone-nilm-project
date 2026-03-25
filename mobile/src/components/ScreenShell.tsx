@@ -1,8 +1,8 @@
+import { LinearGradient } from 'expo-linear-gradient';
+import { usePathname, useRouter } from 'expo-router';
 import { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { usePathname, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '../context/AuthContext';
 import { blurActiveElement, runAfterBlur } from '../utils/focus';
@@ -49,7 +49,7 @@ export function ScreenShell({
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={[...theme.gradients.hero]} style={styles.hero}>
-        <Text style={styles.eyebrow}>NILM CAPSTONE MVP</Text>
+        <Text style={styles.eyebrow}>AppliSense</Text>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
         <Pressable style={styles.profilePill} onPress={() => navigateTo('/(app)/profile')}>

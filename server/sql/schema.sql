@@ -37,10 +37,10 @@ CREATE TABLE tbldevices (
 CREATE TABLE tblrooms (
   room_id INT PRIMARY KEY AUTO_INCREMENT,
   room_name VARCHAR(100) NOT NULL UNIQUE,
-  room_tenant_id INT NOT NULL,
-  room_device_id INT NOT NULL UNIQUE,
+  room_tenant_id INT NULL,
+  room_device_id INT NULL UNIQUE,
   room_rate_per_kwh DECIMAL(10, 2) NOT NULL DEFAULT 12.00,
-  room_status ENUM('available', 'occupied') NOT NULL DEFAULT 'occupied',
+  room_status ENUM('available', 'occupied') NOT NULL DEFAULT 'available',
   CONSTRAINT fk_rooms_tenant FOREIGN KEY (room_tenant_id) REFERENCES tblusers(user_id),
   CONSTRAINT fk_rooms_device FOREIGN KEY (room_device_id) REFERENCES tbldevices(device_id)
 );

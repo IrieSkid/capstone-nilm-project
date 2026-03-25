@@ -8,6 +8,7 @@ The feeder is a small standalone Express server that continuously generates dete
 - feeds multiple room-assigned devices at once
 - simulates 1 to 3 connected appliances per device using fixed room/device appliance portfolios
 - keeps the NILM flow real: input -> validation -> storage -> detection -> dashboard output
+- now includes a separate no-login feeder console GUI at `http://localhost:4010/console`
 
 ## Start It
 
@@ -16,6 +17,8 @@ The feeder is a small standalone Express server that continuously generates dete
 2. Start the feeder:
    - `npm run dev:feeder`
 3. It autostarts automatically and feeds all room-assigned devices every `2000 ms`.
+4. Open the console in a browser:
+   - `http://localhost:4010/console`
 
 ## Endpoints
 
@@ -25,6 +28,11 @@ The feeder is a small standalone Express server that continuously generates dete
 - `POST /start`
 - `POST /tick`
 - `POST /stop`
+- `GET /console`
+- `GET /console/api/bootstrap`
+- `POST /console/api/ports`
+- `PATCH /console/api/ports/:portId`
+- `DELETE /console/api/ports/:portId`
 
 ## Start Request Options
 
@@ -42,12 +50,38 @@ The feeder is a small standalone Express server that continuously generates dete
 
 ## What It Simulates
 
-Each target device keeps a fixed set of connected appliances and deterministic operating patterns:
+Each target device keeps a DB-backed set of connected appliance ports and deterministic operating patterns. You can change the simulated room/device appliance mix live in the feeder console.
 
-- `Room 101 / DEV-101`: Air Conditioner, Electric Fan, LED TV
+Default seeded examples:
+
+- `Room 101 / DEV-101`: Inverter Air Conditioner, Electric Fan, LED TV
 - `Room 102 / DEV-102`: Refrigerator, Rice Cooker, LED TV
 
+Additional appliance types available in the feeder console:
+
+- LED Light Bulb
+- Wi-Fi Router
+- Laptop Charger
+- Desktop Computer
+- Microwave Oven
+- Electric Kettle
+- Induction Cooker
+- Washing Machine
+- Water Heater
+- Water Dispenser
+
 The feeder computes per-appliance power, current, power factor, and THD, then posts the summed device reading every 2 seconds. The backend stores a multi-appliance detection breakdown for the latest reading so the dashboards can show the total plus the detected appliance list and confidence values.
+
+## Feeder Console Flow
+
+Use the console when you want a hardware-like control panel without logging into the mobile app:
+
+1. Start the feeder server.
+2. Open `http://localhost:4010/console`.
+3. Pick a room/device card.
+4. Plug in more appliances, unplug existing ones, or change a port to a different appliance type.
+5. Toggle any port on or off.
+6. Watch the next feeder tick update the backend, database, and dashboards.
 
 ## Demo-Friendly Flow
 

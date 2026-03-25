@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "db:reset": "tsx src/scripts/reset-db.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "feeder": "tsx src/scripts/readings-feeder.ts"
+    "feeder": "tsx src/scripts/readings-feeder.ts",
+    "feeder:dev": "tsx watch src/scripts/readings-feeder.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

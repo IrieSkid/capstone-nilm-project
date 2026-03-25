@@ -16,6 +16,7 @@ Defense-ready MVP for a software-based Non-Intrusive Load Monitoring (NILM) syst
 - admin dashboard with totals, latest room summaries, highest consuming room, and device status
 - simulator screen that posts to the same ingest endpoint as external hardware
 - optional feeder server that continuously pushes deterministic multi-appliance readings into the ingest API
+- separate no-login feeder console for plugging, unplugging, and reassigning simulated appliances per room/device
 
 ## Project Structure
 
@@ -112,6 +113,19 @@ Default feeder URL:
 ```text
 http://localhost:4010
 ```
+
+Feeder console URL:
+
+```text
+http://localhost:4010/console
+```
+
+The console lets you:
+
+- plug in new appliances to any room-assigned device
+- unplug appliances from feeder device ports
+- reassign a port to a different appliance type
+- toggle feeder port supply on or off without logging into the main app
 
 If you want to restart it manually or override the interval:
 

@@ -9,16 +9,20 @@ interface RoomRow extends RowDataPacket {
   room_name: string;
   room_rate_per_kwh: number;
   room_status: 'available' | 'occupied';
-  tenant_id: number;
-  tenant_name: string;
-  tenant_email: string;
-  device_id: number;
-  device_name: string;
-  device_identifier: string;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  tenant_email: string | null;
+  device_id: number | null;
+  device_name: string | null;
+  device_identifier: string | null;
 }
 
 interface ExistsRow extends RowDataPacket {
   id: number;
+}
+
+interface CountRow extends RowDataPacket {
+  total: number;
 }
 
 function mapRoomRow(row: RoomRow) {
@@ -86,6 +90,23 @@ async function assertDeviceIsAvailable(deviceId: number, currentRoomId?: number)
   }
 }
 
+async function assertTenantIsAvailable(tenantId: number, currentRoomId?: number) {
+  const [rows] = await pool.query<ExistsRow[]>(
+    `
+      SELECT room_id AS id
+      FROM tblrooms
+      WHERE room_tenant_id = ?
+        AND (? IS NULL OR room_id <> ?)
+      LIMIT 1
+    `,
+    [tenantId, currentRoomId ?? null, currentRoomId ?? null],
+  );
+
+  if (rows[0]) {
+    throw new AppError(409, 'Selected tenant is already assigned to another room.');
+  }
+}
+
 export async function listRooms() {
   const [rows] = await pool.query<RoomRow[]>(
     `
@@ -101,8 +122,8 @@ export async function listRooms() {
         device.device_name AS device_name,
         device.device_identifier AS device_identifier
       FROM tblrooms room
-      INNER JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
-      INNER JOIN tbldevices device ON device.device_id = room.room_device_id
+      LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      LEFT JOIN tbldevices device ON device.device_id = room.room_device_id
       ORDER BY room.room_id
     `,
   );
@@ -125,8 +146,8 @@ async function getRoomById(roomId: number) {
         device.device_name AS device_name,
         device.device_identifier AS device_identifier
       FROM tblrooms room
-      INNER JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
-      INNER JOIN tbldevices device ON device.device_id = room.room_device_id
+      LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      LEFT JOIN tbldevices device ON device.device_id = room.room_device_id
       WHERE room.room_id = ?
       LIMIT 1
     `,
@@ -140,16 +161,62 @@ async function getRoomById(roomId: number) {
   return mapRoomRow(rows[0]);
 }
 
+async function assertRoomCanBeDeleted(roomId: number) {
+  const room = await getRoomById(roomId);
+
+  if (room.roomStatus !== 'available') {
+    throw new AppError(409, 'Only available rooms can be deleted.');
+  }
+
+  if (room.tenantId !== null || room.deviceId !== null) {
+    throw new AppError(409, 'Only fully unassigned rooms can be deleted.');
+  }
+
+  const [readingRows] = await pool.query<CountRow[]>(
+    `
+      SELECT COUNT(*) AS total
+      FROM tblreading_headers
+      WHERE reading_header_room_id = ?
+    `,
+    [roomId],
+  );
+
+  if ((readingRows[0]?.total ?? 0) > 0) {
+    throw new AppError(409, 'Rooms with recorded readings cannot be deleted.');
+  }
+
+  const [detectionRows] = await pool.query<CountRow[]>(
+    `
+      SELECT COUNT(*) AS total
+      FROM tblappliance_detection_headers
+      WHERE detection_header_room_id = ?
+    `,
+    [roomId],
+  );
+
+  if ((detectionRows[0]?.total ?? 0) > 0) {
+    throw new AppError(409, 'Rooms with recorded detections cannot be deleted.');
+  }
+
+  return room;
+}
+
 export async function createRoom(input: {
   room_name: string;
-  room_tenant_id: number;
-  room_device_id: number;
+  room_tenant_id: number | null;
+  room_device_id: number | null;
   room_rate_per_kwh: number;
   room_status: 'available' | 'occupied';
 }) {
-  await assertTenantExists(input.room_tenant_id);
-  await assertDeviceExists(input.room_device_id);
-  await assertDeviceIsAvailable(input.room_device_id);
+  if (input.room_tenant_id !== null) {
+    await assertTenantExists(input.room_tenant_id);
+    await assertTenantIsAvailable(input.room_tenant_id);
+  }
+
+  if (input.room_device_id !== null) {
+    await assertDeviceExists(input.room_device_id);
+    await assertDeviceIsAvailable(input.room_device_id);
+  }
 
   try {
     const [result] = await pool.query<ResultSetHeader>(
@@ -182,25 +249,26 @@ export async function updateRoom(
   roomId: number,
   input: Partial<{
     room_name: string;
-    room_tenant_id: number;
-    room_device_id: number;
+    room_tenant_id: number | null;
+    room_device_id: number | null;
     room_rate_per_kwh: number;
     room_status: 'available' | 'occupied';
   }>,
 ) {
   await getRoomById(roomId);
 
-  if (input.room_tenant_id !== undefined) {
+  if (input.room_tenant_id !== undefined && input.room_tenant_id !== null) {
     await assertTenantExists(input.room_tenant_id);
+    await assertTenantIsAvailable(input.room_tenant_id, roomId);
   }
 
-  if (input.room_device_id !== undefined) {
+  if (input.room_device_id !== undefined && input.room_device_id !== null) {
     await assertDeviceExists(input.room_device_id);
     await assertDeviceIsAvailable(input.room_device_id, roomId);
   }
 
   const fields: string[] = [];
-  const values: Array<string | number> = [];
+  const values: Array<string | number | null> = [];
 
   if (input.room_name !== undefined) {
     fields.push('room_name = ?');
@@ -241,4 +309,18 @@ export async function updateRoom(
   }
 
   return getRoomById(roomId);
+}
+
+export async function deleteRoom(roomId: number) {
+  const room = await assertRoomCanBeDeleted(roomId);
+
+  await pool.query(
+    `
+      DELETE FROM tblrooms
+      WHERE room_id = ?
+    `,
+    [roomId],
+  );
+
+  return room;
 }

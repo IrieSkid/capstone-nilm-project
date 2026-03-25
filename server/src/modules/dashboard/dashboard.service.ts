@@ -6,6 +6,7 @@ import { AuthenticatedUser } from '../../shared/types/auth';
 import { getTenantRoomIds } from '../../shared/utils/room-access';
 import { getLatestDetectionByRoomId } from '../detections/detections.service';
 import { getDevicePortsByRoomId } from '../device-ports/device-ports.service';
+import { getDeviceUptimeSecondsMap } from '../devices/devices.service';
 import { getReadingHistoryByRoomId, getLatestReadingByRoomId } from '../readings/readings.service';
 
 interface CountRow extends RowDataPacket {
@@ -20,6 +21,8 @@ interface TenantRoomRow extends RowDataPacket {
   device_id: number;
   device_name: string;
   device_identifier: string;
+  device_last_seen: string | null;
+  computed_status: 'online' | 'offline';
 }
 
 interface AdminRoomRow extends RowDataPacket {
@@ -27,12 +30,12 @@ interface AdminRoomRow extends RowDataPacket {
   room_name: string;
   room_rate_per_kwh: number;
   room_status: 'available' | 'occupied';
-  tenant_id: number;
-  tenant_name: string;
-  tenant_email: string;
-  device_id: number;
-  device_name: string;
-  device_identifier: string;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  tenant_email: string | null;
+  device_id: number | null;
+  device_name: string | null;
+  device_identifier: string | null;
 }
 
 interface AdminDeviceRow extends RowDataPacket {
@@ -65,13 +68,29 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
         room.room_status,
         device.device_id,
         device.device_name,
-        device.device_identifier
+        device.device_identifier,
+        device.device_last_seen,
+        CASE
+          WHEN device.device_status = 'online'
+            AND device.device_last_seen IS NOT NULL
+            AND device.device_last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+          THEN 'online'
+          ELSE 'offline'
+        END AS computed_status
       FROM tblrooms room
       INNER JOIN tbldevices device ON device.device_id = room.room_device_id
       WHERE room.room_tenant_id = ?
       ORDER BY room.room_name
     `,
-    [user.userId],
+    [env.DEVICE_OFFLINE_MINUTES, user.userId],
+  );
+
+  const deviceUptimeByDeviceId = await getDeviceUptimeSecondsMap(
+    rooms.map((room) => ({
+      deviceId: room.device_id,
+      computedStatus: room.computed_status,
+      deviceLastSeen: room.device_last_seen,
+    })),
   );
 
   const roomSummaries = await Promise.all(
@@ -89,6 +108,7 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
         deviceId: room.device_id,
         deviceName: room.device_name,
         deviceIdentifier: room.device_identifier,
+        deviceUptimeSeconds: deviceUptimeByDeviceId.get(room.device_id) ?? null,
         currentPowerUsage: latestReading?.powerW ?? null,
         latestEnergyKwh: latestReading?.energyKwh ?? null,
         likelyActiveAppliance:
@@ -147,8 +167,8 @@ export async function getAdminDashboard() {
             device.device_name,
             device.device_identifier
           FROM tblrooms room
-          INNER JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
-          INNER JOIN tbldevices device ON device.device_id = room.room_device_id
+          LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+          LEFT JOIN tbldevices device ON device.device_id = room.room_device_id
           ORDER BY room.room_name
         `,
       ),
@@ -179,11 +199,19 @@ export async function getAdminDashboard() {
   const userCountRow = userCountResult[0][0];
   const rooms = roomsResult[0];
   const devices = devicesResult[0];
+  const deviceUptimeByDeviceId = await getDeviceUptimeSecondsMap(
+    devices.map((device) => ({
+      deviceId: device.device_id,
+      computedStatus: device.computed_status,
+      deviceLastSeen: device.device_last_seen,
+    })),
+  );
 
   const roomSummaries = await Promise.all(
     rooms.map(async (room) => {
       const latestReading = await getLatestReadingByRoomId(room.room_id);
       const latestDetection = await getLatestDetectionByRoomId(room.room_id);
+      const devicePorts = await getDevicePortsByRoomId(room.room_id);
 
       return {
         roomId: room.room_id,
@@ -196,8 +224,13 @@ export async function getAdminDashboard() {
         deviceId: room.device_id,
         deviceName: room.device_name,
         deviceIdentifier: room.device_identifier,
+        deviceUptimeSeconds:
+          room.device_id !== null
+            ? deviceUptimeByDeviceId.get(room.device_id) ?? null
+            : null,
         latestReading,
         latestDetection,
+        devicePorts,
       };
     }),
   );
@@ -233,6 +266,7 @@ export async function getAdminDashboard() {
       deviceStatus: device.device_status,
       computedStatus: device.computed_status,
       deviceLastSeen: device.device_last_seen,
+      deviceUptimeSeconds: deviceUptimeByDeviceId.get(device.device_id) ?? null,
     })),
     quickLinks: {
       rooms: '/rooms',

@@ -4,6 +4,7 @@ import { env } from '../../config/env';
 import { pool } from '../../config/db';
 import { AppError } from '../../shared/utils/app-error';
 import { handleDatabaseError } from '../../shared/utils/database-error';
+import { getDurationSecondsSince, parseStoredDateTime } from '../../shared/utils/date';
 
 interface DeviceRow extends RowDataPacket {
   device_id: number;
@@ -17,6 +18,106 @@ interface DeviceRow extends RowDataPacket {
   computed_status: 'online' | 'offline';
 }
 
+interface DeviceUptimeRow extends RowDataPacket {
+  reading_header_device_id: number;
+  reading_header_time: string;
+}
+
+interface DeviceUptimeContext {
+  deviceId: number;
+  computedStatus: 'online' | 'offline';
+  deviceLastSeen: string | null;
+}
+
+function computeContinuousUptimeSeconds(readingTimes: string[], lastSeen: string | null) {
+  const now = new Date();
+  const lastSeenDate = parseStoredDateTime(lastSeen);
+
+  if (!lastSeenDate) {
+    return null;
+  }
+
+  const offlineThresholdMs = env.DEVICE_OFFLINE_MINUTES * 60 * 1000;
+
+  if ((now.getTime() - lastSeenDate.getTime()) > offlineThresholdMs) {
+    return null;
+  }
+
+  if (readingTimes.length === 0) {
+    return getDurationSecondsSince(lastSeen, now);
+  }
+
+  let streakStart = parseStoredDateTime(readingTimes[0]) ?? lastSeenDate;
+  let previousTimestamp = streakStart;
+
+  for (let index = 1; index < readingTimes.length; index += 1) {
+    const currentTimestamp = parseStoredDateTime(readingTimes[index]);
+
+    if (!currentTimestamp) {
+      continue;
+    }
+
+    if ((previousTimestamp.getTime() - currentTimestamp.getTime()) > offlineThresholdMs) {
+      break;
+    }
+
+    streakStart = currentTimestamp;
+    previousTimestamp = currentTimestamp;
+  }
+
+  return Math.max(0, Math.floor((now.getTime() - streakStart.getTime()) / 1000));
+}
+
+export async function getDeviceUptimeSecondsMap(deviceContexts: DeviceUptimeContext[]) {
+  const uptimeByDeviceId = new Map<number, number | null>();
+
+  for (const context of deviceContexts) {
+    uptimeByDeviceId.set(context.deviceId, null);
+  }
+
+  const onlineContexts = deviceContexts.filter(
+    (context) => context.computedStatus === 'online' && context.deviceLastSeen,
+  );
+
+  if (onlineContexts.length === 0) {
+    return uptimeByDeviceId;
+  }
+
+  const deviceIds = onlineContexts.map((context) => context.deviceId);
+  const placeholders = deviceIds.map(() => '?').join(', ');
+
+  const [rows] = await pool.query<DeviceUptimeRow[]>(
+    `
+      SELECT
+        reading_header_device_id,
+        reading_header_time
+      FROM tblreading_headers
+      WHERE reading_header_device_id IN (${placeholders})
+      ORDER BY reading_header_device_id ASC, reading_header_id DESC
+    `,
+    deviceIds,
+  );
+
+  const readingsByDeviceId = new Map<number, string[]>();
+
+  for (const row of rows) {
+    const readingTimes = readingsByDeviceId.get(row.reading_header_device_id) ?? [];
+    readingTimes.push(row.reading_header_time);
+    readingsByDeviceId.set(row.reading_header_device_id, readingTimes);
+  }
+
+  for (const context of onlineContexts) {
+    const uptimeSeconds = computeContinuousUptimeSeconds(
+      readingsByDeviceId.get(context.deviceId) ?? [],
+      context.deviceLastSeen,
+    );
+
+    uptimeByDeviceId.set(context.deviceId, uptimeSeconds);
+  }
+
+  return uptimeByDeviceId;
+}
+
 function mapDeviceRow(row: DeviceRow) {
   return {
     deviceId: row.device_id,
@@ -28,6 +129,7 @@ function mapDeviceRow(row: DeviceRow) {
     createdAt: row.created_at,
     roomId: row.room_id,
     roomName: row.room_name,
+    deviceUptimeSeconds: null,
   };
 }
 
@@ -57,7 +159,18 @@ export async function listDevices() {
     [env.DEVICE_OFFLINE_MINUTES],
   );
 
-  return rows.map(mapDeviceRow);
+  const uptimeByDeviceId = await getDeviceUptimeSecondsMap(
+    rows.map((row) => ({
+      deviceId: row.device_id,
+      computedStatus: row.computed_status,
+      deviceLastSeen: row.device_last_seen,
+    })),
+  );
+
+  return rows.map((row) => ({
+    ...mapDeviceRow(row),
+    deviceUptimeSeconds: uptimeByDeviceId.get(row.device_id) ?? null,
+  }));
 }
 
 async function getDeviceById(deviceId: number) {
@@ -91,7 +204,18 @@ async function getDeviceById(deviceId: number) {
     throw new AppError(404, 'Device not found.');
   }
 
-  return mapDeviceRow(rows[0]);
+  const uptimeByDeviceId = await getDeviceUptimeSecondsMap([
+    {
+      deviceId: rows[0].device_id,
+      computedStatus: rows[0].computed_status,
+      deviceLastSeen: rows[0].device_last_seen,
+    },
+  ]);
+
+  return {
+    ...mapDeviceRow(rows[0]),
+    deviceUptimeSeconds: uptimeByDeviceId.get(rows[0].device_id) ?? null,
+  };
 }
 
 export async function createDevice(input: {

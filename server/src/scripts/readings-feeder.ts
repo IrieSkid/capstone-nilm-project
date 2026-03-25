@@ -1,9 +1,18 @@
+import path from 'node:path';
+
 import express from 'express';
 import { RowDataPacket } from 'mysql2';
 import { z } from 'zod';
 
 import { pool } from '../config/db';
 import { env } from '../config/env';
+import {
+  createFeederConsolePort,
+  deleteFeederConsolePort,
+  listFeederConsoleApplianceTypes,
+  listFeederConsoleRooms,
+  updateFeederConsolePort,
+} from '../modules/feeder-console/feeder-console.service';
 
 interface FeederTargetRow extends RowDataPacket {
   device_id: number;
@@ -91,6 +100,33 @@ const startSchema = z.object({
   deviceIdentifiers: z.array(z.string().trim().min(1)).optional(),
 });
 
+const portIdParamSchema = z.object({
+  portId: z.coerce.number().int().positive(),
+});
+
+const createConsolePortSchema = z.object({
+  deviceId: z.coerce.number().int().positive(),
+  applianceTypeId: z.coerce.number().int().positive(),
+  portLabel: z.string().trim().min(1).max(30).optional(),
+  supplyState: z.enum(['on', 'off']).default('on'),
+});
+
+const updateConsolePortSchema = z
+  .object({
+    applianceTypeId: z.coerce.number().int().positive().optional(),
+    portLabel: z.string().trim().min(1).max(30).optional(),
+    supplyState: z.enum(['on', 'off']).optional(),
+  })
+  .refine(
+    (value) =>
+      value.applianceTypeId !== undefined
+      || value.portLabel !== undefined
+      || value.supplyState !== undefined,
+    {
+      message: 'Provide at least one device port field to update.',
+    },
+  );
+
 function round(value: number, decimals = 4) {
   return Number(value.toFixed(decimals));
 }
@@ -142,9 +178,13 @@ function getApplianceBehavior(applianceName: string, portLabel: string) {
   };
 
   const behavior = {
+    'Inverter Air Conditioner': {
+      periodTicks: 24,
+      amplitude: 0.15,
+    },
     'Air Conditioner': {
-      periodTicks: 20,
-      amplitude: 0.06,
+      periodTicks: 24,
+      amplitude: 0.15,
     },
     'Electric Fan': {
       periodTicks: 16,
@@ -161,6 +201,46 @@ function getApplianceBehavior(applianceName: string, portLabel: string) {
     'LED TV': {
       periodTicks: 22,
       amplitude: 0.02,
+    },
+    'LED Light Bulb': {
+      periodTicks: 30,
+      amplitude: 0.01,
+    },
+    'Wi-Fi Router': {
+      periodTicks: 30,
+      amplitude: 0.01,
+    },
+    'Laptop Charger': {
+      periodTicks: 20,
+      amplitude: 0.05,
+    },
+    'Desktop Computer': {
+      periodTicks: 18,
+      amplitude: 0.08,
+    },
+    'Microwave Oven': {
+      periodTicks: 12,
+      amplitude: 0.03,
+    },
+    'Electric Kettle': {
+      periodTicks: 10,
+      amplitude: 0.02,
+    },
+    'Induction Cooker': {
+      periodTicks: 14,
+      amplitude: 0.09,
+    },
+    'Washing Machine': {
+      periodTicks: 30,
+      amplitude: 0.14,
+    },
+    'Water Heater': {
+      periodTicks: 18,
+      amplitude: 0.03,
+    },
+    'Water Dispenser': {
+      periodTicks: 24,
+      amplitude: 0.05,
     },
   }[applianceName] ?? defaults;
 
@@ -572,6 +652,103 @@ const feeder = new ReadingsFeeder();
 const app = express();
 
 app.use(express.json());
+
+async function syncFeederAfterConsoleChange() {
+  if (feeder.running) {
+    await feeder.tick();
+    return feeder.getStatus();
+  }
+
+  await feeder.refreshTargets();
+  return feeder.getStatus();
+}
+
+app.get('/', (_req, res) => {
+  res.redirect('/console');
+});
+
+app.get('/console', (_req, res) => {
+  res.sendFile(path.resolve(__dirname, 'feeder-console.html'));
+});
+
+app.get('/console/api/bootstrap', async (_req, res, next) => {
+  try {
+    const [rooms, applianceTypes] = await Promise.all([
+      listFeederConsoleRooms(),
+      listFeederConsoleApplianceTypes(),
+    ]);
+
+    res.json({
+      data: {
+        status: feeder.getStatus(),
+        rooms,
+        applianceTypes,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/console/api/ports', async (req, res, next) => {
+  try {
+    const input = createConsolePortSchema.parse(req.body);
+    const port = await createFeederConsolePort(input);
+    const status = await syncFeederAfterConsoleChange();
+
+    res.status(201).json({
+      message: 'Device port created successfully.',
+      data: {
+        port,
+        status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/console/api/ports/:portId', async (req, res, next) => {
+  try {
+    const { portId } = portIdParamSchema.parse(req.params);
+    const input = updateConsolePortSchema.parse(req.body);
+    const port = await updateFeederConsolePort({
+      portId,
+      applianceTypeId: input.applianceTypeId,
+      portLabel: input.portLabel,
+      supplyState: input.supplyState,
+    });
+    const status = await syncFeederAfterConsoleChange();
+
+    res.json({
+      message: 'Device port updated successfully.',
+      data: {
+        port,
+        status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/console/api/ports/:portId', async (req, res, next) => {
+  try {
+    const { portId } = portIdParamSchema.parse(req.params);
+    const removedPort = await deleteFeederConsolePort(portId);
+    const status = await syncFeederAfterConsoleChange();
+
+    res.json({
+      message: 'Device port removed successfully.',
+      data: {
+        removedPort,
+        status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/health', (_req, res) => {
   res.json({

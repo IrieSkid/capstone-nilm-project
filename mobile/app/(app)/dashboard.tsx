@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
 
 import { apiRequest } from '@/src/api/client';
 import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ScreenShell } from '@/src/components/ScreenShell';
 import { SectionCard } from '@/src/components/SectionCard';
+import { useAppAlert } from '@/src/context/AlertContext';
 import { useAuth } from '@/src/context/AuthContext';
 import {
   AdminDashboardData,
@@ -15,37 +16,112 @@ import {
   TenantDashboardData,
 } from '@/src/types/models';
 import { getErrorMessage, isUnauthorized } from '@/src/utils/errors';
-import { runAfterBlur } from '@/src/utils/focus';
 import {
   formatConfidence,
   formatCurrency,
   formatDateTime,
+  formatDuration,
   formatNumber,
 } from '@/src/utils/format';
 import { theme } from '@/src/utils/theme';
 
+const DASHBOARD_REALTIME_INTERVAL_MS = 2000;
+
+const MONTHLY_DAYS = 30;
+const FALLBACK_DAILY_USAGE_HOURS = 8;
+
+function getTypicalDailyUsageHours(applianceTypeName: string) {
+  const normalizedName = applianceTypeName.trim().toLowerCase();
+
+  if (normalizedName.includes('inverter air conditioner') || normalizedName.includes('air conditioner')) {
+    return 8;
+  }
+
+  if (normalizedName.includes('electric fan')) {
+    return 8;
+  }
+
+  if (normalizedName.includes('refrigerator')) {
+    return 10;
+  }
+
+  if (normalizedName.includes('rice cooker')) {
+    return 1.5;
+  }
+
+  if (normalizedName.includes('led tv')) {
+    return 5;
+  }
+
+  return FALLBACK_DAILY_USAGE_HOURS;
+}
+
+function getEstimatedMonthlyCost(input: {
+  powerW: number | null | undefined;
+  roomRatePerKwh: number;
+  appliances?: DetectedAppliance[] | null;
+}) {
+  if (input.appliances && input.appliances.length > 0) {
+    return input.appliances.reduce(
+      (sum, appliance) =>
+        sum +
+        (appliance.detectedPower / 1000) *
+          getTypicalDailyUsageHours(appliance.applianceTypeName) *
+          MONTHLY_DAYS *
+          input.roomRatePerKwh,
+      0,
+    );
+  }
+
+  if (input.powerW === null || input.powerW === undefined) {
+    return null;
+  }
+
+  return (
+    (input.powerW / 1000) *
+    FALLBACK_DAILY_USAGE_HOURS *
+    MONTHLY_DAYS *
+    input.roomRatePerKwh
+  );
+}
+
+function getRealtimeCostPerHour(powerW: number | null | undefined, roomRatePerKwh: number) {
+  if (powerW === null || powerW === undefined) {
+    return null;
+  }
+
+  return (powerW / 1000) * roomRatePerKwh;
+}
+
 export default function DashboardScreen() {
-  const router = useRouter();
+  const { showError, showSuccess } = useAppAlert();
   const { user, token, logout } = useAuth();
   const [data, setData] = useState<AdminDashboardData | TenantDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portActionError, setPortActionError] = useState<string | null>(null);
   const [activePortId, setActivePortId] = useState<number | null>(null);
+  const requestInFlightRef = useRef(false);
 
-  const loadDashboard = useCallback(async () => {
-    if (!token || !user) {
+  const loadDashboard = useCallback(async (options?: { silent?: boolean }) => {
+    if (!token || !user || requestInFlightRef.current) {
       return;
     }
 
+    requestInFlightRef.current = true;
+
     try {
-      setLoading(true);
-      setError(null);
+      if (!options?.silent) {
+        setLoading(true);
+      }
+
       const nextData =
         user.roleName === 'admin'
           ? await apiRequest<AdminDashboardData>('/dashboard/admin', { token })
           : await apiRequest<TenantDashboardData>('/dashboard/tenant', { token });
+
       setData(nextData);
+      setError(null);
     } catch (dashboardError) {
       if (isUnauthorized(dashboardError)) {
         await logout();
@@ -55,12 +131,21 @@ export default function DashboardScreen() {
       setError(getErrorMessage(dashboardError, 'Unable to load dashboard.'));
     } finally {
       setLoading(false);
+      requestInFlightRef.current = false;
     }
   }, [logout, token, user]);
 
   useFocusEffect(
     useCallback(() => {
-      loadDashboard();
+      void loadDashboard();
+
+      const intervalId = setInterval(() => {
+        void loadDashboard({ silent: true });
+      }, DASHBOARD_REALTIME_INTERVAL_MS);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }, [loadDashboard]),
   );
 
@@ -84,12 +169,18 @@ export default function DashboardScreen() {
       });
 
       await loadDashboard();
+      showSuccess(
+        supplyState === 'on' ? 'Port turned on' : 'Port turned off',
+        `The selected device port is now ${supplyState.toUpperCase()} and the next reading cycle will reflect it.`,
+      );
 
       setTimeout(() => {
         void loadDashboard();
       }, 2500);
     } catch (toggleError) {
-      setPortActionError(getErrorMessage(toggleError, 'Unable to update the port state.'));
+      const nextError = getErrorMessage(toggleError, 'Unable to update the port state.');
+      setPortActionError(nextError);
+      showError('Port update failed', nextError);
     } finally {
       setActivePortId(null);
     }
@@ -119,31 +210,12 @@ export default function DashboardScreen() {
       ) : null}
 
       {!loading && !error && user.roleName === 'admin' && data ? (
-        <AdminDashboardView
-          data={data as AdminDashboardData}
-          onOpenDevices={() =>
-            runAfterBlur(() => {
-              router.replace('/(app)/devices');
-            })
-          }
-          onOpenRooms={() =>
-            runAfterBlur(() => {
-              router.replace('/(app)/rooms');
-            })
-          }
-          onOpenUsers={() =>
-            runAfterBlur(() => {
-              router.replace('/(app)/users');
-            })
-          }
-          onRefresh={() => void loadDashboard()}
-        />
+        <AdminDashboardView data={data as AdminDashboardData} />
       ) : null}
 
       {!loading && !error && user.roleName === 'tenant' && data ? (
         <TenantDashboardView
           data={data as TenantDashboardData}
-          onRefresh={() => void loadDashboard()}
           onTogglePort={(portId, supplyState) => void handleTogglePort(portId, supplyState)}
           activePortId={activePortId}
           portActionError={portActionError}
@@ -153,19 +225,40 @@ export default function DashboardScreen() {
   );
 }
 
-function AdminDashboardView({
-  data,
-  onRefresh,
-  onOpenRooms,
-  onOpenDevices,
-  onOpenUsers,
-}: {
-  data: AdminDashboardData;
-  onRefresh: () => void;
-  onOpenRooms: () => void;
-  onOpenDevices: () => void;
-  onOpenUsers: () => void;
-}) {
+function AdminDashboardView({ data }: { data: AdminDashboardData }) {
+  const totalConsumption = data.roomSummaries.reduce(
+    (sum, room) => sum + (room.latestReading?.powerW ?? 0),
+    0,
+  );
+  const totalRealtimeCostPerHour = data.roomSummaries.reduce(
+    (sum, room) =>
+      sum + (getRealtimeCostPerHour(room.latestReading?.powerW, room.roomRatePerKwh) ?? 0),
+    0,
+  );
+  const totalEstimatedMonthlyCost = data.roomSummaries.reduce(
+    (sum, room) =>
+      sum +
+        (getEstimatedMonthlyCost({
+          powerW: room.latestReading?.powerW,
+          roomRatePerKwh: room.roomRatePerKwh,
+          appliances: room.latestDetection?.appliances,
+        }) ?? 0),
+    0,
+  );
+  const roomsWithReadings = data.roomSummaries.filter((room) => room.latestReading).length;
+  const highestConsumingRoomSummary = data.highestConsumingRoom
+    ? data.roomSummaries.find((room) => room.roomId === data.highestConsumingRoom?.roomId) ?? null
+    : null;
+  const highestConsumingRoomMonthlyEstimate = highestConsumingRoomSummary
+    ? getEstimatedMonthlyCost(
+        {
+          powerW: highestConsumingRoomSummary.latestReading?.powerW,
+          roomRatePerKwh: highestConsumingRoomSummary.roomRatePerKwh,
+          appliances: highestConsumingRoomSummary.latestDetection?.appliances,
+        },
+      )
+    : null;
+
   return (
     <>
       <View style={styles.metricRow}>
@@ -175,34 +268,47 @@ function AdminDashboardView({
       </View>
 
       <SectionCard>
-        <Text style={styles.sectionTitle}>Highest consuming room</Text>
-        {data.highestConsumingRoom ? (
+        <Text style={styles.sectionTitle}>Total Consumption</Text>
+        {data.roomSummaries.length > 0 ? (
           <>
-            <Text style={styles.heroMetric}>{data.highestConsumingRoom.roomName}</Text>
-            <Text style={styles.helperText}>{data.highestConsumingRoom.tenantName}</Text>
-            <Text style={styles.metricValue}>
-              {formatNumber(data.highestConsumingRoom.currentPowerUsage, 'W')}
+            <Text style={styles.metricValue}>{formatNumber(totalConsumption, 'W')}</Text>
+            <Text style={styles.inlineStat}>
+              Total real-time cost/hr: {formatCurrency(totalRealtimeCostPerHour)}
             </Text>
-            <Text style={styles.helperText}>
-              Estimated cost: {formatCurrency(data.highestConsumingRoom.estimatedCost)}
+            <Text style={styles.inlineStat}>
+              Estimated total monthly cost: {formatCurrency(totalEstimatedMonthlyCost)}
             </Text>
+            {data.highestConsumingRoom ? (
+              <View style={styles.summaryInset}>
+                <Text style={styles.applianceGroupTitle}>Highest consuming room</Text>
+                <Text style={styles.heroMetric}>{data.highestConsumingRoom.roomName}</Text>
+                <Text style={styles.helperText}>
+                  {data.highestConsumingRoom.tenantName ?? 'Unassigned tenant'}
+                </Text>
+                <Text style={styles.inlineStat}>
+                  Power: {formatNumber(data.highestConsumingRoom.currentPowerUsage, 'W')}
+                </Text>
+                <Text style={styles.helperText}>
+                  Real-time cost/hr:{' '}
+                  {formatCurrency(
+                    getRealtimeCostPerHour(
+                      highestConsumingRoomSummary?.latestReading?.powerW,
+                      highestConsumingRoomSummary?.roomRatePerKwh ?? 0,
+                    ),
+                  )}
+                </Text>
+                <Text style={styles.helperText}>
+                  Estimated monthly cost: {formatCurrency(highestConsumingRoomMonthlyEstimate)}
+                </Text>
+              </View>
+            ) : null}
           </>
         ) : (
           <EmptyState
             description="No readings have been ingested yet."
-            title="No highest consuming room yet"
+            title="No room consumption yet"
           />
         )}
-      </SectionCard>
-
-      <SectionCard>
-        <Text style={styles.sectionTitle}>Quick links</Text>
-        <View style={styles.buttonRow}>
-          <Button label="Users" onPress={onOpenUsers} />
-          <Button label="Rooms" onPress={onOpenRooms} variant="secondary" />
-          <Button label="Devices" onPress={onOpenDevices} variant="ghost" />
-        </View>
-        <Button label="Refresh dashboard" onPress={onRefresh} variant="ghost" />
       </SectionCard>
 
       <SectionCard>
@@ -213,26 +319,44 @@ function AdminDashboardView({
             title="No rooms configured"
           />
         ) : (
-          data.roomSummaries.map((room) => (
-            <View key={room.roomId} style={styles.listItem}>
-              <Text style={styles.itemTitle}>{room.roomName}</Text>
-              <Text style={styles.helperText}>
-                {room.tenantName} · {room.deviceIdentifier}
-              </Text>
-              <Text style={styles.inlineStat}>
-                Power: {formatNumber(room.latestReading?.powerW, 'W')} · Cost:{' '}
-                {formatCurrency(room.latestReading?.estimatedCost)}
-              </Text>
-              <Text style={styles.inlineStat}>
-                Appliance: {room.latestDetection?.applianceTypeName || 'No confident match'} ·
-                Confidence: {formatConfidence(room.latestDetection?.confidence)}
-              </Text>
-              <ApplianceBreakdown appliances={room.latestDetection?.appliances ?? []} />
-              <Text style={styles.helperText}>
-                Updated {formatDateTime(room.latestReading?.timestamp)}
-              </Text>
-            </View>
-          ))
+          data.roomSummaries.map((room) => {
+            const estimatedMonthlyCost = getEstimatedMonthlyCost({
+              powerW: room.latestReading?.powerW,
+              roomRatePerKwh: room.roomRatePerKwh,
+              appliances: room.latestDetection?.appliances,
+            });
+
+            return (
+              <View key={room.roomId} style={styles.listItem}>
+                <Text style={styles.itemTitle}>{room.roomName}</Text>
+                <Text style={styles.helperText}>
+                  {room.tenantName ?? 'Unassigned tenant'} - {room.deviceIdentifier ?? 'Unassigned device'}
+                </Text>
+                <Text style={styles.inlineStat}>
+                  Power: {formatNumber(room.latestReading?.powerW, 'W')} - Estimated monthly cost:{' '}
+                  {formatCurrency(estimatedMonthlyCost)}
+                </Text>
+                <Text style={styles.helperText}>
+                  Device uptime:{' '}
+                  {room.deviceUptimeSeconds !== null
+                    ? formatDuration(room.deviceUptimeSeconds)
+                    : 'Offline'}
+                </Text>
+                <Text style={styles.inlineStat}>
+                  Appliance: {room.latestDetection?.applianceTypeName || 'No confident match'} -
+                  Confidence: {formatConfidence(room.latestDetection?.confidence)}
+                </Text>
+                <ApplianceBreakdown
+                  appliances={room.latestDetection?.appliances ?? []}
+                  roomRatePerKwh={room.roomRatePerKwh}
+                />
+                <PortUptimeList ports={room.devicePorts} />
+                <Text style={styles.helperText}>
+                  Updated {formatDateTime(room.latestReading?.timestamp)}
+                </Text>
+              </View>
+            );
+          })
         )}
       </SectionCard>
 
@@ -250,6 +374,12 @@ function AdminDashboardView({
               {device.computedStatus.toUpperCase()}
             </Text>
             <Text style={styles.helperText}>Last seen {formatDateTime(device.deviceLastSeen)}</Text>
+            <Text style={styles.helperText}>
+              Uptime:{' '}
+              {device.deviceUptimeSeconds !== null
+                ? formatDuration(device.deviceUptimeSeconds)
+                : 'Offline'}
+            </Text>
           </View>
         ))}
       </SectionCard>
@@ -259,13 +389,11 @@ function AdminDashboardView({
 
 function TenantDashboardView({
   data,
-  onRefresh,
   onTogglePort,
   activePortId,
   portActionError,
 }: {
   data: TenantDashboardData;
-  onRefresh: () => void;
   onTogglePort: (portId: number, supplyState: 'on' | 'off') => void;
   activePortId: number | null;
   portActionError: string | null;
@@ -277,100 +405,156 @@ function TenantDashboardView({
           description="Ask the admin to assign your account to a room and device."
           title="No room assigned yet"
         />
-        <Button label="Refresh dashboard" onPress={onRefresh} variant="ghost" />
       </SectionCard>
     );
   }
 
   return (
     <>
-      {data.rooms.map((room) => (
-        <SectionCard key={room.roomId}>
-          <Text style={styles.sectionTitle}>{room.roomName}</Text>
-          <Text style={styles.helperText}>
-            {room.deviceName} · rate {formatCurrency(room.roomRatePerKwh)} / kWh
-          </Text>
-          <Text style={styles.metricValue}>{formatNumber(room.currentPowerUsage, 'W')}</Text>
-          <Text style={styles.inlineStat}>
-            Energy: {formatNumber(room.latestEnergyKwh, 'kWh')} · Cost:{' '}
-            {formatCurrency(room.estimatedElectricityCost)}
-          </Text>
-          <Text style={styles.inlineStat}>
-            Appliance: {room.likelyActiveAppliance || 'No confident match'} · Confidence:{' '}
-            {formatConfidence(room.detectionConfidence)}
-          </Text>
-          <ApplianceBreakdown appliances={room.activeAppliances} />
-          <Text style={styles.helperText}>Last reading {formatDateTime(room.latestReadingAt)}</Text>
+      {data.rooms.map((room) => {
+        const estimatedMonthlyCost = getEstimatedMonthlyCost({
+          powerW: room.currentPowerUsage,
+          roomRatePerKwh: room.roomRatePerKwh,
+          appliances: room.activeAppliances,
+        });
 
-          <Text style={styles.sectionTitle}>Remote port control</Text>
-          {room.devicePorts.map((port) => {
-            const detectedAppliance = room.activeAppliances.find(
-              (appliance) => appliance.applianceTypeId === port.applianceTypeId,
-            );
-
-            return (
-              <View key={port.devicePortId} style={styles.applianceItem}>
-                <Text style={styles.itemTitle}>
-                  {port.portLabel} · {port.applianceTypeName}
-                </Text>
-                <Text style={styles.helperText}>
-                  Supply {port.supplyState.toUpperCase()} · {port.categoryName} · {port.powerPattern}
-                </Text>
-                <Text style={styles.inlineStat}>
-                  {detectedAppliance
-                    ? `${formatNumber(detectedAppliance.detectedPower, 'W')} · Confidence ${formatConfidence(detectedAppliance.confidence)}`
-                    : 'No live reading while this port is off or not currently detected.'}
-                </Text>
-                <Text style={styles.helperText}>
-                  Last changed {formatDateTime(port.lastChangedAt)}
-                  {port.lastChangedByName ? ` by ${port.lastChangedByName}` : ''}
-                </Text>
-                <View style={styles.buttonRow}>
-                  <Button
-                    label="Turn on"
-                    loading={activePortId === port.devicePortId && port.supplyState === 'off'}
-                    disabled={port.supplyState === 'on' || activePortId === port.devicePortId}
-                    onPress={() => onTogglePort(port.devicePortId, 'on')}
-                    variant="secondary"
-                  />
-                  <Button
-                    label="Turn off"
-                    loading={activePortId === port.devicePortId && port.supplyState === 'on'}
-                    disabled={port.supplyState === 'off' || activePortId === port.devicePortId}
-                    onPress={() => onTogglePort(port.devicePortId, 'off')}
-                    variant="danger"
-                  />
-                </View>
-              </View>
-            );
-          })}
-          {portActionError ? <Text style={styles.errorText}>{portActionError}</Text> : null}
-
-          <Text style={styles.sectionTitle}>Recent reading history</Text>
-          {room.recentHistory.length === 0 ? (
-            <EmptyState
-              description="Once the feeder or device sends data, readings will appear here."
-              title="No readings yet"
+        return (
+          <SectionCard key={room.roomId}>
+            <Text style={styles.sectionTitle}>{room.roomName}</Text>
+            <Text style={styles.helperText}>
+              {room.deviceName} - rate {formatCurrency(room.roomRatePerKwh)} / kWh
+            </Text>
+            <Text style={styles.metricValue}>{formatNumber(room.currentPowerUsage, 'W')}</Text>
+            <Text style={styles.inlineStat}>
+              Energy: {formatNumber(room.latestEnergyKwh, 'kWh')} - Estimated monthly cost:{' '}
+              {formatCurrency(estimatedMonthlyCost)}
+            </Text>
+          
+            <Text style={styles.inlineStat}>
+              Appliance: {room.likelyActiveAppliance || 'No confident match'} - Confidence:{' '}
+              {formatConfidence(room.detectionConfidence)}
+            </Text>
+            <ApplianceBreakdown
+              appliances={room.activeAppliances}
+              roomRatePerKwh={room.roomRatePerKwh}
             />
-          ) : (
-            room.recentHistory.map((reading) => (
-              <View key={reading.readingId} style={styles.listItem}>
-                <Text style={styles.itemTitle}>{formatDateTime(reading.timestamp)}</Text>
-                <Text style={styles.inlineStat}>
-                  {formatNumber(reading.powerW, 'W')} · {formatNumber(reading.energyKwh, 'kWh')}
-                </Text>
-                <Text style={styles.helperText}>
-                  {reading.likelyActiveAppliance || 'No confident match'} · Cost{' '}
-                  {formatCurrency(reading.estimatedCost)}
-                </Text>
-              </View>
-            ))
-          )}
-        </SectionCard>
-      ))}
+            <Text style={styles.helperText}>
+              Device uptime:{' '}
+              {room.deviceUptimeSeconds !== null
+                ? formatDuration(room.deviceUptimeSeconds)
+                : 'Offline'}
+            </Text>
+            <Text style={styles.helperText}>Last reading {formatDateTime(room.latestReadingAt)}</Text>
 
-      <Button label="Refresh dashboard" onPress={onRefresh} variant="ghost" />
+            <Text style={styles.sectionTitle}>Remote port control</Text>
+            {room.devicePorts.map((port) => {
+              const detectedAppliance = room.activeAppliances.find(
+                (appliance) => appliance.applianceTypeId === port.applianceTypeId,
+              );
+
+              return (
+                <View key={port.devicePortId} style={styles.applianceItem}>
+                  <Text style={styles.itemTitle}>
+                    {port.portLabel} - {port.applianceTypeName}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Supply {port.supplyState.toUpperCase()} - {port.categoryName} - {port.powerPattern}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Appliance uptime:{' '}
+                    {port.applianceUptimeSeconds !== null
+                      ? formatDuration(port.applianceUptimeSeconds)
+                      : 'Currently off'}
+                  </Text>
+                  <Text style={styles.inlineStat}>
+                    {detectedAppliance
+                      ? `${formatNumber(detectedAppliance.detectedPower, 'W')} - Confidence ${formatConfidence(detectedAppliance.confidence)}`
+                      : 'No live reading while this port is off or not currently detected.'}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Last changed {formatDateTime(port.lastChangedAt)}
+                    {port.lastChangedByName ? ` by ${port.lastChangedByName}` : ''}
+                  </Text>
+                  <View style={styles.buttonRow}>
+                    <Button
+                      label="Turn on"
+                      loading={activePortId === port.devicePortId && port.supplyState === 'off'}
+                      disabled={port.supplyState === 'on' || activePortId === port.devicePortId}
+                      onPress={() => onTogglePort(port.devicePortId, 'on')}
+                      variant="secondary"
+                    />
+                    <Button
+                      label="Turn off"
+                      loading={activePortId === port.devicePortId && port.supplyState === 'on'}
+                      disabled={port.supplyState === 'off' || activePortId === port.devicePortId}
+                      onPress={() => onTogglePort(port.devicePortId, 'off')}
+                      variant="danger"
+                    />
+                  </View>
+                </View>
+              );
+            })}
+            {portActionError ? <Text style={styles.errorText}>{portActionError}</Text> : null}
+
+            <Text style={styles.sectionTitle}>Recent reading history</Text>
+            {room.recentHistory.length === 0 ? (
+              <EmptyState
+                description="Once the feeder or device sends data, readings will appear here."
+                title="No readings yet"
+              />
+            ) : (
+              room.recentHistory.map((reading) => {
+                const estimatedMonthlyCost = getEstimatedMonthlyCost({
+                  powerW: reading.powerW,
+                  roomRatePerKwh: room.roomRatePerKwh,
+                  appliances: reading.detections,
+                });
+
+                return (
+                  <View key={reading.readingId} style={styles.listItem}>
+                    <Text style={styles.itemTitle}>{formatDateTime(reading.timestamp)}</Text>
+                    <Text style={styles.inlineStat}>
+                      {formatNumber(reading.powerW, 'W')} - {formatNumber(reading.energyKwh, 'kWh')}
+                    </Text>
+                    <Text style={styles.helperText}>
+                      {reading.detections.length > 0
+                        ? reading.detections.map((appliance) => appliance.applianceTypeName).join(' + ')
+                        : reading.likelyActiveAppliance || 'No confident match'} - Estimated monthly
+                      cost {formatCurrency(estimatedMonthlyCost)}
+                    </Text>
+                    <ApplianceBreakdown
+                      appliances={reading.detections}
+                      roomRatePerKwh={room.roomRatePerKwh}
+                      title={null}
+                    />
+                  </View>
+                );
+              })
+            )}
+          </SectionCard>
+        );
+      })}
     </>
+  );
+}
+
+function PortUptimeList({ ports }: { ports: DevicePort[] }) {
+  if (ports.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.applianceGroup}>
+      <Text style={styles.applianceGroupTitle}>Appliance uptime</Text>
+      {ports.map((port) => (
+        <Text key={port.devicePortId} style={styles.helperText}>
+          {port.portLabel} - {port.applianceTypeName} -{' '}
+          {port.applianceUptimeSeconds !== null
+            ? formatDuration(port.applianceUptimeSeconds)
+            : 'Currently off'}
+        </Text>
+      ))}
+    </View>
   );
 }
 
@@ -383,25 +567,34 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ApplianceBreakdown({ appliances }: { appliances: DetectedAppliance[] }) {
+function ApplianceBreakdown({
+  appliances,
+  roomRatePerKwh,
+  title = 'Detected appliances',
+}: {
+  appliances: DetectedAppliance[];
+  roomRatePerKwh: number;
+  title?: string | null;
+}) {
   if (appliances.length === 0) {
     return null;
   }
 
   return (
     <View style={styles.applianceGroup}>
-      <Text style={styles.applianceGroupTitle}>Detected appliances</Text>
+      {title ? <Text style={styles.applianceGroupTitle}>{title}</Text> : null}
       {appliances.map((appliance) => (
         <View
           key={`${appliance.applianceTypeId}-${appliance.rank}`}
           style={styles.applianceItem}>
           <Text style={styles.itemTitle}>{appliance.applianceTypeName}</Text>
           <Text style={styles.helperText}>
-            {appliance.categoryName} · {appliance.powerPattern}
+            {appliance.categoryName} - {appliance.powerPattern}
           </Text>
           <Text style={styles.inlineStat}>
-            {formatNumber(appliance.detectedPower, 'W')} · Confidence{' '}
-            {formatConfidence(appliance.confidence)}
+            {formatNumber(appliance.detectedPower, 'W')} - Real-time cost/hr{' '}
+            {formatCurrency(getRealtimeCostPerHour(appliance.detectedPower, roomRatePerKwh))} -
+            Confidence {formatConfidence(appliance.confidence)}
           </Text>
         </View>
       ))}
@@ -443,6 +636,14 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 24,
     fontWeight: '800',
+  },
+  summaryInset: {
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.line,
+    backgroundColor: theme.colors.background,
+    padding: 14,
+    gap: 4,
   },
   sectionTitle: {
     color: theme.colors.text,

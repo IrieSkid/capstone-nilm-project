@@ -47,3 +47,29 @@ export function formatDateTime(value: string | null | undefined) {
     minute: '2-digit',
   }).format(date);
 }
+
+export function formatDuration(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return 'N/A';
+  }
+
+  if (value < 60) {
+    return `${value}s`;
+  }
+
+  const totalMinutes = Math.floor(value / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+
+  if (totalHours > 0) {
+    return `${totalHours}h ${minutes}m`;
+  }
+
+  return `${totalMinutes}m`;
+}

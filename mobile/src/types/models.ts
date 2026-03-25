@@ -36,6 +36,7 @@ export interface Device {
   deviceStatus: 'online' | 'offline';
   computedStatus: 'online' | 'offline';
   deviceLastSeen: string | null;
+  deviceUptimeSeconds: number | null;
   createdAt?: string;
   roomId: number | null;
   roomName: string | null;
@@ -46,12 +47,12 @@ export interface Room {
   roomName: string;
   roomRatePerKwh: number;
   roomStatus: 'available' | 'occupied';
-  tenantId: number;
-  tenantName: string;
-  tenantEmail: string;
-  deviceId: number;
-  deviceName: string;
-  deviceIdentifier: string;
+  tenantId: number | null;
+  tenantName: string | null;
+  tenantEmail: string | null;
+  deviceId: number | null;
+  deviceName: string | null;
+  deviceIdentifier: string | null;
 }
 
 export interface Reading {
@@ -69,6 +70,7 @@ export interface Reading {
   estimatedCost: number;
   likelyActiveAppliance: string | null;
   detectionConfidence: number | null;
+  detections: DetectedAppliance[];
 }
 
 export interface DetectedAppliance {
@@ -107,6 +109,7 @@ export interface DevicePort {
   applianceTypeName: string;
   categoryName: string;
   powerPattern: string;
+  applianceUptimeSeconds: number | null;
 }
 
 export interface Detection {
@@ -131,6 +134,7 @@ export interface TenantRoomSummary {
   deviceId: number;
   deviceName: string;
   deviceIdentifier: string;
+  deviceUptimeSeconds: number | null;
   currentPowerUsage: number | null;
   latestEnergyKwh: number | null;
   likelyActiveAppliance: string | null;
@@ -154,14 +158,16 @@ export interface AdminRoomSummary {
   roomName: string;
   roomRatePerKwh: number;
   roomStatus: 'available' | 'occupied';
-  tenantId: number;
-  tenantName: string;
-  tenantEmail: string;
-  deviceId: number;
-  deviceName: string;
-  deviceIdentifier: string;
+  tenantId: number | null;
+  tenantName: string | null;
+  tenantEmail: string | null;
+  deviceId: number | null;
+  deviceName: string | null;
+  deviceIdentifier: string | null;
+  deviceUptimeSeconds: number | null;
   latestReading: Reading | null;
   latestDetection: Detection | null;
+  devicePorts: DevicePort[];
 }
 
 export interface AdminDashboardData {
@@ -173,7 +179,7 @@ export interface AdminDashboardData {
   highestConsumingRoom: {
     roomId: number;
     roomName: string;
-    tenantName: string;
+    tenantName: string | null;
     currentPowerUsage: number | null;
     estimatedCost: number | null;
   } | null;

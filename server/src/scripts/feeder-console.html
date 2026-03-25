@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AppliSense Feeder Console</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #071118;
+        --panel: #102028;
+        --panel-2: #152a33;
+        --line: #27404a;
+        --text: #e6f0f2;
+        --muted: #92a8af;
+        --primary: #4fa3b5;
+        --primary-strong: #2e6977;
+        --success: #3fbf7f;
+        --danger: #e05d5d;
+        --warning: #f3c969;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(79, 163, 181, 0.14), transparent 28%),
+          linear-gradient(180deg, #09141b, var(--bg));
+        color: var(--text);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .page {
+        max-width: 1380px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, #0d1b22, #18313b, #245666);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+      }
+
+      .eyebrow {
+        margin: 0 0 6px;
+        color: #b8d1d8;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1.1;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        color: #d2e0e4;
+        max-width: 860px;
+        line-height: 1.6;
+      }
+
+      .top-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 18px;
+        margin-top: 18px;
+      }
+
+      .panel {
+        background: rgba(10, 22, 29, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        padding: 18px;
+        backdrop-filter: blur(12px);
+      }
+
+      .panel-title {
+        margin: 0 0 14px;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #b8d1d8;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: end;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .field input,
+      .field select {
+        min-height: 44px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: #17303a;
+        color: var(--text);
+      }
+
+      .field select {
+        color-scheme: dark;
+      }
+
+      .field select option {
+        background: #f2f6f7;
+        color: #16313a;
+      }
+
+      .field select option:checked,
+      .field select option:hover,
+      .field select option:focus {
+        background: #8fb9e8;
+        color: #102028;
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .btn {
+        min-height: 44px;
+        padding: 10px 14px;
+        border: 0;
+        border-radius: 12px;
+        cursor: pointer;
+        background: var(--primary-strong);
+        color: white;
+        font-weight: 700;
+      }
+
+      .btn.secondary {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .btn.success {
+        background: var(--success);
+      }
+
+      .btn.danger {
+        background: var(--danger);
+      }
+
+      .btn.warning {
+        background: #ad7d11;
+      }
+
+      .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 14px;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      .live-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 20px;
+      }
+
+      .room-card {
+        background: linear-gradient(180deg, rgba(16, 32, 40, 0.98), rgba(12, 24, 31, 0.98));
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 22px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+
+      .room-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .room-name {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      .room-meta,
+      .muted {
+        color: var(--muted);
+      }
+
+      .status-pill {
+        padding: 7px 11px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .status-pill.online {
+        background: rgba(63, 191, 127, 0.18);
+        color: #9ce0bc;
+      }
+
+      .status-pill.offline {
+        background: rgba(224, 93, 93, 0.18);
+        color: #ffb6b6;
+      }
+
+      .live-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .summary-chip {
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 16px;
+        padding: 12px;
+      }
+
+      .summary-chip strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 20px;
+      }
+
+      .card-section {
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding-top: 14px;
+      }
+
+      .section-heading {
+        margin: 0 0 10px;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #b8d1d8;
+      }
+
+      .port-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .port-card {
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .port-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .port-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .port-form {
+        display: grid;
+        grid-template-columns: 1fr 1.4fr 0.8fr auto;
+        gap: 10px;
+      }
+
+      .live-appliances {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .live-appliance {
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+        padding: 10px 12px;
+      }
+
+      .result-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 360px;
+        overflow: auto;
+      }
+
+      .result-item {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .result-item.ok {
+        border-color: rgba(63, 191, 127, 0.35);
+      }
+
+      .result-item.error {
+        border-color: rgba(224, 93, 93, 0.35);
+      }
+
+      .toast {
+        position: sticky;
+        top: 12px;
+        z-index: 10;
+        margin-bottom: 14px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid transparent;
+        display: none;
+      }
+
+      .toast.show {
+        display: block;
+      }
+
+      .toast.success {
+        background: rgba(63, 191, 127, 0.15);
+        border-color: rgba(63, 191, 127, 0.45);
+      }
+
+      .toast.error {
+        background: rgba(224, 93, 93, 0.15);
+        border-color: rgba(224, 93, 93, 0.45);
+      }
+
+      .empty {
+        border: 1px dashed var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 1120px) {
+        .top-grid,
+        .live-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .controls,
+        .metrics,
+        .live-summary {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .port-form {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .page {
+          padding: 14px;
+        }
+
+        .controls,
+        .metrics,
+        .live-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .room-header,
+        .port-top {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div id="toast" class="toast"></div>
+
+      <section class="hero">
+        <p class="eyebrow">Temporary Feeder App</p>
+        <h1>AppliSense Feeder Console</h1>
+        <p class="subtitle">
+          A separate no-login GUI for live NILM simulation. Use this to plug appliances in or out,
+          add more appliances per room/device, reassign ports, and watch the feeder post real
+          readings to the exact same ingest pipeline as the main system.
+        </p>
+      </section>
+
+      <div class="top-grid">
+        <section class="panel">
+          <h2 class="panel-title">Feeder Controls</h2>
+          <div class="controls">
+            <div class="field">
+              <label for="intervalMs">Interval (ms)</label>
+              <input id="intervalMs" type="number" min="500" step="500" value="2000" />
+            </div>
+            <button class="btn success" id="startButton" type="button">Start / Restart</button>
+            <button class="btn secondary" id="tickButton" type="button">Tick once</button>
+            <button class="btn warning" id="refreshButton" type="button">Refresh view</button>
+            <button class="btn danger" id="stopButton" type="button">Stop feeder</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Feeder Status</h2>
+          <div class="metrics" id="statusMetrics"></div>
+        </section>
+      </div>
+
+      <div class="top-grid">
+        <section class="panel">
+          <h2 class="panel-title">Room / Device Control</h2>
+          <div id="roomsContainer" class="live-grid"></div>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Recent Feeder Results</h2>
+          <div id="resultsContainer" class="result-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const state = {
+        snapshot: null,
+        pollHandle: null,
+        addDrafts: {},
+        portDrafts: {},
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function formatNumber(value, suffix = '') {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return '--';
+        }
+
+        const formatted = new Intl.NumberFormat('en-PH', {
+          maximumFractionDigits: 2,
+        }).format(Number(value));
+
+        return suffix ? `${formatted} ${suffix}` : formatted;
+      }
+
+      function formatCurrency(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return '--';
+        }
+
+        return new Intl.NumberFormat('en-PH', {
+          style: 'currency',
+          currency: 'PHP',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number(value));
+      }
+
+      function formatDateTime(value) {
+        if (!value) {
+          return '--';
+        }
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+          return value;
+        }
+
+        return date.toLocaleString('en-PH', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      function showToast(type, message) {
+        const toast = document.getElementById('toast');
+        toast.className = `toast show ${type}`;
+        toast.textContent = message;
+        clearTimeout(showToast._handle);
+        showToast._handle = setTimeout(() => {
+          toast.className = 'toast';
+          toast.textContent = '';
+        }, 2600);
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          ...options,
+        });
+
+        const rawText = await response.text();
+        const payload = rawText ? JSON.parse(rawText) : {};
+
+        if (!response.ok) {
+          throw new Error(payload.message || 'Request failed.');
+        }
+
+        return payload;
+      }
+
+      function isFormInteractionActive() {
+        const activeElement = document.activeElement;
+
+        if (!activeElement) {
+          return false;
+        }
+
+        if (activeElement.id === 'intervalMs') {
+          return true;
+        }
+
+        return Boolean(activeElement.closest('.port-form'));
+      }
+
+      function captureDrafts() {
+        const snapshot = state.snapshot;
+
+        if (!snapshot) {
+          return;
+        }
+
+        for (const room of snapshot.rooms ?? []) {
+          const addLabel = document.getElementById(`add-label-${room.deviceId}`);
+          const addAppliance = document.getElementById(`add-appliance-${room.deviceId}`);
+          const addState = document.getElementById(`add-state-${room.deviceId}`);
+
+          if (addLabel && addAppliance && addState) {
+            state.addDrafts[room.deviceId] = {
+              portLabel: addLabel.value,
+              applianceTypeId: Number(addAppliance.value),
+              supplyState: addState.value,
+            };
+          }
+
+          for (const port of room.ports ?? []) {
+            const labelInput = document.getElementById(`label-${port.devicePortId}`);
+            const applianceInput = document.getElementById(`appliance-${port.devicePortId}`);
+            const stateInput = document.getElementById(`state-${port.devicePortId}`);
+
+            if (labelInput && applianceInput && stateInput) {
+              state.portDrafts[port.devicePortId] = {
+                portLabel: labelInput.value,
+                applianceTypeId: Number(applianceInput.value),
+                supplyState: stateInput.value,
+              };
+            }
+          }
+        }
+      }
+
+      function getAddDraft(room) {
+        const firstApplianceId = state.snapshot?.applianceTypes?.[0]?.applianceTypeId ?? '';
+
+        return state.addDrafts[room.deviceId] ?? {
+          portLabel: '',
+          applianceTypeId: firstApplianceId,
+          supplyState: 'on',
+        };
+      }
+
+      function getPortDraft(port) {
+        return state.portDrafts[port.devicePortId] ?? {
+          portLabel: port.portLabel,
+          applianceTypeId: port.applianceTypeId,
+          supplyState: port.supplyState,
+        };
+      }
+
+      function rememberAddDraft(deviceId) {
+        const labelInput = document.getElementById(`add-label-${deviceId}`);
+        const applianceInput = document.getElementById(`add-appliance-${deviceId}`);
+        const stateInput = document.getElementById(`add-state-${deviceId}`);
+
+        if (!labelInput || !applianceInput || !stateInput) {
+          return;
+        }
+
+        state.addDrafts[deviceId] = {
+          portLabel: labelInput.value,
+          applianceTypeId: Number(applianceInput.value),
+          supplyState: stateInput.value,
+        };
+      }
+
+      function rememberPortDraft(portId) {
+        const labelInput = document.getElementById(`label-${portId}`);
+        const applianceInput = document.getElementById(`appliance-${portId}`);
+        const stateInput = document.getElementById(`state-${portId}`);
+
+        if (!labelInput || !applianceInput || !stateInput) {
+          return;
+        }
+
+        state.portDrafts[portId] = {
+          portLabel: labelInput.value,
+          applianceTypeId: Number(applianceInput.value),
+          supplyState: stateInput.value,
+        };
+      }
+
+      function getApplianceOptions(selectedId) {
+        const applianceTypes = state.snapshot?.applianceTypes ?? [];
+
+        return applianceTypes
+          .map((appliance) => {
+            const selected = Number(selectedId) === appliance.applianceTypeId ? 'selected' : '';
+            return `
+              <option value="${appliance.applianceTypeId}" ${selected}>
+                ${escapeHtml(appliance.applianceTypeName)} (${escapeHtml(appliance.categoryName)})
+              </option>
+            `;
+          })
+          .join('');
+      }
+
+      function renderStatus() {
+        const status = state.snapshot?.status;
+        const metrics = [
+          { label: 'Running', value: status?.running ? 'Yes' : 'No' },
+          { label: 'Interval', value: status ? `${status.intervalMs} ms` : '--' },
+          { label: 'Targets', value: status?.targetCount ?? '--' },
+          { label: 'Cycles', value: status?.cycleCount ?? '--' },
+          { label: 'Last Tick', value: formatDateTime(status?.lastTickAt) },
+        ];
+
+        document.getElementById('statusMetrics').innerHTML = metrics
+          .map(
+            (metric) => `
+              <div class="metric">
+                <div class="metric-label">${escapeHtml(metric.label)}</div>
+                <div class="metric-value">${escapeHtml(metric.value)}</div>
+              </div>
+            `,
+          )
+          .join('');
+
+        if (status?.intervalMs) {
+          document.getElementById('intervalMs').value = String(status.intervalMs);
+        }
+      }
+
+      function renderResults() {
+        const recentResults = state.snapshot?.status?.recentResults ?? [];
+        const container = document.getElementById('resultsContainer');
+
+        if (recentResults.length === 0) {
+          container.innerHTML = '<div class="empty">No feeder results yet.</div>';
+          return;
+        }
+
+        container.innerHTML = recentResults
+          .map(
+            (result) => `
+              <article class="result-item ${result.status}">
+                <strong>${escapeHtml(result.roomName)} · ${escapeHtml(result.deviceIdentifier)}</strong>
+                <div class="muted">${formatDateTime(result.timestamp)}</div>
+                <div>${escapeHtml(result.message)}</div>
+                <div>Power ${formatNumber(result.powerW, 'W')} · Cost ${formatCurrency(result.estimatedCost)}</div>
+                <div class="muted">${escapeHtml((result.activeAppliances ?? []).join(', ') || 'No active appliances')}</div>
+              </article>
+            `,
+          )
+          .join('');
+      }
+
+      function getTargetForRoom(room) {
+        return (state.snapshot?.status?.targets ?? []).find(
+          (target) => target.deviceIdentifier === room.deviceIdentifier,
+        );
+      }
+
+      function renderRooms() {
+        const rooms = state.snapshot?.rooms ?? [];
+        const container = document.getElementById('roomsContainer');
+
+        if (rooms.length === 0) {
+          container.innerHTML = '<div class="empty">No room-assigned devices are available for the feeder.</div>';
+          return;
+        }
+
+        container.innerHTML = rooms
+          .map((room) => {
+            const target = getTargetForRoom(room);
+            const lastReading = target?.lastReading;
+            const activeAppliances = lastReading?.activeAppliances ?? [];
+            const addDraft = getAddDraft(room);
+
+            return `
+              <article class="room-card">
+                <div class="room-header">
+                  <div>
+                    <h3 class="room-name">${escapeHtml(room.roomName)}</h3>
+                    <div class="room-meta">${escapeHtml(room.tenantName)} · ${escapeHtml(room.deviceName)} · ${escapeHtml(room.deviceIdentifier)}</div>
+                    <div class="room-meta">Rate ${formatCurrency(room.roomRatePerKwh)} / kWh</div>
+                  </div>
+                  <span class="status-pill ${target ? 'online' : 'offline'}">
+                    ${target ? 'Connected' : 'Waiting'}
+                  </span>
+                </div>
+
+                <div class="live-summary">
+                  <div class="summary-chip">
+                    <div class="muted">Total power</div>
+                    <strong>${formatNumber(lastReading?.powerW, 'W')}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <div class="muted">Current</div>
+                    <strong>${formatNumber(lastReading?.current, 'A')}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <div class="muted">Energy</div>
+                    <strong>${formatNumber(lastReading?.energyKwh, 'kWh')}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <div class="muted">Posted</div>
+                    <strong style="font-size: 15px">${escapeHtml(formatDateTime(target?.lastPostedAt))}</strong>
+                  </div>
+                </div>
+
+                <section class="card-section">
+                  <h4 class="section-heading">Live active appliances</h4>
+                  <div class="live-appliances">
+                    ${
+                      activeAppliances.length > 0
+                        ? activeAppliances
+                            .map(
+                              (appliance) => `
+                                <div class="live-appliance">
+                                  <strong>${escapeHtml(appliance.portLabel)} · ${escapeHtml(appliance.applianceName)}</strong>
+                                  <div class="muted">${escapeHtml(appliance.categoryName)} · ${escapeHtml(appliance.powerPattern)} · supply ${escapeHtml(appliance.supplyState.toUpperCase())}</div>
+                                  <div>${formatNumber(appliance.powerW, 'W')} · PF ${formatNumber(appliance.powerFactor)} · THD ${formatNumber(appliance.thdPercentage, '%')}</div>
+                                </div>
+                              `,
+                            )
+                            .join('')
+                        : '<div class="empty">No active appliances on this device right now.</div>'
+                    }
+                  </div>
+                </section>
+
+                <section class="card-section">
+                  <h4 class="section-heading">Plug new appliance</h4>
+                  <div class="port-form">
+                    <div class="field">
+                      <label for="add-label-${room.deviceId}">Port label</label>
+                      <input id="add-label-${room.deviceId}" type="text" placeholder="Leave blank for auto label" value="${escapeHtml(addDraft.portLabel)}" oninput="rememberAddDraft(${room.deviceId})" />
+                    </div>
+                    <div class="field">
+                      <label for="add-appliance-${room.deviceId}">Appliance type</label>
+                      <select id="add-appliance-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
+                        ${getApplianceOptions(addDraft.applianceTypeId)}
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="add-state-${room.deviceId}">Initial state</label>
+                      <select id="add-state-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
+                        <option value="on" ${addDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
+                        <option value="off" ${addDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>&nbsp;</label>
+                      <button class="btn success" type="button" onclick="addPort(${room.deviceId})">Plug In</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="card-section">
+                  <h4 class="section-heading">Configured device ports</h4>
+                  <div class="port-list">
+                    ${
+                      room.ports.length > 0
+                        ? room.ports
+                            .map(
+                              (port) => {
+                                const portDraft = getPortDraft(port);
+
+                                return `
+                                <div class="port-card">
+                                  <div class="port-top">
+                                    <div>
+                                      <strong>${escapeHtml(port.portLabel)} · ${escapeHtml(port.applianceTypeName)}</strong>
+                                      <div class="muted">
+                                        ${escapeHtml(port.categoryName)} · ${escapeHtml(port.powerPattern)} · changed ${escapeHtml(formatDateTime(port.lastChangedAt))}
+                                      </div>
+                                    </div>
+                                    <div class="port-actions">
+                                      <button class="btn secondary" type="button" onclick="togglePort(${port.devicePortId}, 'on')">Turn on</button>
+                                      <button class="btn warning" type="button" onclick="togglePort(${port.devicePortId}, 'off')">Turn off</button>
+                                      <button class="btn danger" type="button" onclick="removePort(${port.devicePortId})">Unplug</button>
+                                    </div>
+                                  </div>
+                                  <div class="port-form">
+                                    <div class="field">
+                                      <label for="label-${port.devicePortId}">Port label</label>
+                                      <input id="label-${port.devicePortId}" type="text" value="${escapeHtml(portDraft.portLabel)}" oninput="rememberPortDraft(${port.devicePortId})" />
+                                    </div>
+                                    <div class="field">
+                                      <label for="appliance-${port.devicePortId}">Appliance type</label>
+                                      <select id="appliance-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
+                                        ${getApplianceOptions(portDraft.applianceTypeId)}
+                                      </select>
+                                    </div>
+                                    <div class="field">
+                                      <label for="state-${port.devicePortId}">Supply state</label>
+                                      <select id="state-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
+                                        <option value="on" ${portDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
+                                        <option value="off" ${portDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
+                                      </select>
+                                    </div>
+                                    <div class="field">
+                                      <label>&nbsp;</label>
+                                      <button class="btn" type="button" onclick="savePort(${port.devicePortId})">Save changes</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              `;
+                              },
+                            )
+                            .join('')
+                        : '<div class="empty">No appliance ports configured for this device yet.</div>'
+                    }
+                  </div>
+                </section>
+              </article>
+            `;
+          })
+          .join('');
+      }
+
+      function render() {
+        renderStatus();
+        renderRooms();
+        renderResults();
+      }
+
+      async function loadSnapshot(showStatusMessage = false, options = {}) {
+        if (options.captureDrafts !== false) {
+          captureDrafts();
+        }
+
+        const payload = await requestJson('/console/api/bootstrap');
+        state.snapshot = payload.data;
+        render();
+
+        if (showStatusMessage) {
+          showToast('success', 'Feeder console refreshed.');
+        }
+      }
+
+      async function withAction(action, successMessage) {
+        try {
+          await action();
+          await loadSnapshot(false, { captureDrafts: false });
+          showToast('success', successMessage);
+        } catch (error) {
+          showToast('error', error instanceof Error ? error.message : 'Request failed.');
+        }
+      }
+
+      async function startFeeder() {
+        const intervalInput = document.getElementById('intervalMs');
+        const intervalMs = Number(intervalInput.value);
+        await withAction(
+          async () => {
+            await requestJson('/start', {
+              method: 'POST',
+              body: JSON.stringify({ intervalMs }),
+            });
+          },
+          `Feeder started at ${intervalMs} ms.`,
+        );
+      }
+
+      async function stopFeeder() {
+        await withAction(
+          async () => {
+            await requestJson('/stop', { method: 'POST' });
+          },
+          'Feeder stopped.',
+        );
+      }
+
+      async function tickFeeder() {
+        await withAction(
+          async () => {
+            await requestJson('/tick', { method: 'POST' });
+          },
+          'One feeder cycle was sent.',
+        );
+      }
+
+      async function addPort(deviceId) {
+        const labelInput = document.getElementById(`add-label-${deviceId}`);
+        const applianceInput = document.getElementById(`add-appliance-${deviceId}`);
+        const stateInput = document.getElementById(`add-state-${deviceId}`);
+
+        await withAction(
+          async () => {
+            await requestJson('/console/api/ports', {
+              method: 'POST',
+              body: JSON.stringify({
+                deviceId,
+                applianceTypeId: Number(applianceInput.value),
+                portLabel: labelInput.value.trim() || undefined,
+                supplyState: stateInput.value,
+              }),
+            });
+            delete state.addDrafts[deviceId];
+          },
+          'Appliance plugged into the feeder device.',
+        );
+      }
+
+      async function savePort(portId) {
+        const labelInput = document.getElementById(`label-${portId}`);
+        const applianceInput = document.getElementById(`appliance-${portId}`);
+        const stateInput = document.getElementById(`state-${portId}`);
+
+        await withAction(
+          async () => {
+            await requestJson(`/console/api/ports/${portId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                portLabel: labelInput.value.trim(),
+                applianceTypeId: Number(applianceInput.value),
+                supplyState: stateInput.value,
+              }),
+            });
+            delete state.portDrafts[portId];
+          },
+          'Port configuration updated.',
+        );
+      }
+
+      async function togglePort(portId, supplyState) {
+        await withAction(
+          async () => {
+            if (state.portDrafts[portId]) {
+              state.portDrafts[portId].supplyState = supplyState;
+            }
+
+            await requestJson(`/console/api/ports/${portId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ supplyState }),
+            });
+          },
+          `Port turned ${supplyState.toUpperCase()}.`,
+        );
+      }
+
+      async function removePort(portId) {
+        await withAction(
+          async () => {
+            await requestJson(`/console/api/ports/${portId}`, {
+              method: 'DELETE',
+            });
+            delete state.portDrafts[portId];
+          },
+          'Appliance unplugged from the feeder device.',
+        );
+      }
+
+      document.getElementById('startButton').addEventListener('click', () => {
+        void startFeeder();
+      });
+      document.getElementById('stopButton').addEventListener('click', () => {
+        void stopFeeder();
+      });
+      document.getElementById('tickButton').addEventListener('click', () => {
+        void tickFeeder();
+      });
+      document.getElementById('refreshButton').addEventListener('click', () => {
+        void loadSnapshot(true);
+      });
+
+      void loadSnapshot(false);
+      state.pollHandle = setInterval(() => {
+        if (isFormInteractionActive()) {
+          return;
+        }
+
+        void loadSnapshot(false).catch(() => {});
+      }, 4000);
+    </script>
+  </body>
+</html>

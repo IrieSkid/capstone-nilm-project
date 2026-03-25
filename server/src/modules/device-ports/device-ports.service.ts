@@ -3,6 +3,7 @@ import { RowDataPacket } from 'mysql2';
 import { pool } from '../../config/db';
 import { AuthenticatedUser } from '../../shared/types/auth';
 import { AppError } from '../../shared/utils/app-error';
+import { getDurationSecondsSince } from '../../shared/utils/date';
 
 interface DevicePortRow extends RowDataPacket {
   device_port_id: number;
@@ -37,6 +38,10 @@ function mapDevicePort(row: DevicePortRow) {
     applianceTypeName: row.appliance_type_name,
     categoryName: row.category_name,
     powerPattern: row.appliance_type_power_pattern,
+    applianceUptimeSeconds:
+      row.device_port_supply_state === 'on'
+        ? getDurationSecondsSince(row.device_port_last_changed_at)
+        : null,
   };
 }
 

@@ -80,6 +80,8 @@ interface DetectedAppliance {
   scoreBreakdown?: ScoreBreakdown;
 }
 
+const MAX_DETECTION_COMBINATION_SIZE = 6;
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -368,7 +370,7 @@ export async function createDetectionForReading(connection: PoolConnection, inpu
     };
   }
 
-  const candidates = buildCombinations(profiles, 1, 3)
+  const candidates = buildCombinations(profiles, 1, Math.min(profiles.length, MAX_DETECTION_COMBINATION_SIZE))
     .map((combination) => scoreCombination(combination, input))
     .sort((left, right) => right.confidence - left.confidence);
 

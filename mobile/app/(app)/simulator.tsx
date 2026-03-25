@@ -10,6 +10,7 @@ import { OptionChips } from '@/src/components/OptionChips';
 import { RequireRole } from '@/src/components/RequireRole';
 import { ScreenShell } from '@/src/components/ScreenShell';
 import { SectionCard } from '@/src/components/SectionCard';
+import { useAppAlert } from '@/src/context/AlertContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { Device, IngestPayloadResult } from '@/src/types/models';
 import { getErrorMessage } from '@/src/utils/errors';
@@ -41,12 +42,12 @@ function nowIsoString() {
 
 const airconPreset = {
   voltage: '220',
-  current: '5.2',
-  power_w: '1180',
-  frequency: '60.02',
-  power_factor: '0.84',
-  thd_percentage: '13.0',
-  energy_kwh: '1.25',
+  current: '4.1',
+  power_w: '860',
+  frequency: '60.01',
+  power_factor: '0.95',
+  thd_percentage: '6.8',
+  energy_kwh: '0.92',
 };
 
 const riceCookerPreset = {
@@ -60,6 +61,7 @@ const riceCookerPreset = {
 };
 
 export default function SimulatorScreen() {
+  const { showError, showSuccess } = useAppAlert();
   const { token } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(true);
@@ -112,7 +114,9 @@ export default function SimulatorScreen() {
 
   async function handleSend() {
     if (!form.device_identifier.trim()) {
-      setError('Select a registered device identifier.');
+      const nextError = 'Select a registered device identifier.';
+      setError(nextError);
+      showError('Unable to send reading', nextError);
       return;
     }
 
@@ -121,7 +125,9 @@ export default function SimulatorScreen() {
     );
 
     if (!selectedDevice || !selectedDevice.roomId) {
-      setError('Select a device that is already assigned to a room.');
+      const nextError = 'Select a device that is already assigned to a room.';
+      setError(nextError);
+      showError('Unable to send reading', nextError);
       return;
     }
 
@@ -135,12 +141,16 @@ export default function SimulatorScreen() {
     const energyKwh = Number(form.energy_kwh);
 
     if (Number.isNaN(timestamp.getTime())) {
-      setError('Timestamp must be a valid ISO date.');
+      const nextError = 'Timestamp must be a valid ISO date.';
+      setError(nextError);
+      showError('Unable to send reading', nextError);
       return;
     }
 
     if ([voltage, current, powerW, frequency, powerFactor, thdPercentage, energyKwh].some((value) => Number.isNaN(value))) {
-      setError('All numeric reading fields must contain valid numbers.');
+      const nextError = 'All numeric reading fields must contain valid numbers.';
+      setError(nextError);
+      showError('Unable to send reading', nextError);
       return;
     }
 
@@ -166,8 +176,14 @@ export default function SimulatorScreen() {
 
       setResult(payload);
       setMessage('Reading sent successfully. The dashboard can now show the new NILM output.');
+      showSuccess(
+        'Reading sent',
+        'The ingest request was accepted and the dashboard can now show the new NILM output.',
+      );
     } catch (sendError) {
-      setError(getErrorMessage(sendError, 'Unable to ingest reading.'));
+      const nextError = getErrorMessage(sendError, 'Unable to ingest reading.');
+      setError(nextError);
+      showError('Unable to send reading', nextError);
     } finally {
       setSending(false);
     }
@@ -277,7 +293,10 @@ export default function SimulatorScreen() {
               {formatNumber(result.reading.powerW, 'W')} · {formatNumber(result.reading.energyKwh, 'kWh')}
             </Text>
             <Text style={styles.helperText}>
-              Estimated cost: {formatCurrency(result.estimatedCost)}
+              Running room cost: {formatCurrency(result.estimatedCost)}
+            </Text>
+            <Text style={styles.helperText}>
+              Based on the latest cumulative room kWh reading, not monthly billing and not per-appliance cost.
             </Text>
             <Text style={styles.helperText}>
               Appliance: {result.detection?.applianceTypeName || 'No confident match'}

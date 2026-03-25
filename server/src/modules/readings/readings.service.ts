@@ -32,6 +32,21 @@ interface ReadingRow extends RowDataPacket {
   detection_detail_confidence: number | null;
 }
 
+interface ReadingDetectionRow extends RowDataPacket {
+  reading_header_id: number;
+  detection_detail_id: number;
+  detection_detail_rank: number;
+  appliance_type_id: number;
+  appliance_type_name: string;
+  category_name: string;
+  appliance_type_power_pattern: string;
+  detection_detail_status: 'ON' | 'OFF';
+  detection_detail_confidence: number;
+  detection_detail_detected_power: number;
+  detection_detail_detected_frequency: number;
+  detection_detail_detected_thd: number;
+}
+
 function mapReadingRow(row: ReadingRow) {
   return {
     readingId: row.reading_header_id,
@@ -48,7 +63,103 @@ function mapReadingRow(row: ReadingRow) {
     estimatedCost: Number((row.reading_detail_energy_kwh * row.room_rate_per_kwh).toFixed(2)),
     likelyActiveAppliance: row.appliance_type_name,
     detectionConfidence: row.detection_detail_confidence,
+    detections: [],
   };
+}
+
+async function attachReadingDetections(
+  readings: Array<ReturnType<typeof mapReadingRow>>,
+) {
+  if (readings.length === 0) {
+    return readings;
+  }
+
+  const readingIds = readings.map((reading) => reading.readingId);
+  const placeholders = readingIds.map(() => '?').join(', ');
+
+  const [rows] = await pool.query<ReadingDetectionRow[]>(
+    `
+      SELECT
+        dh.detection_header_reading_header_id AS reading_header_id,
+        dd.detection_detail_id,
+        dd.detection_detail_rank,
+        ap.appliance_type_id,
+        ap.appliance_type_name,
+        cat.category_name,
+        ap.appliance_type_power_pattern,
+        dd.detection_detail_status,
+        dd.detection_detail_confidence,
+        dd.detection_detail_detected_power,
+        dd.detection_detail_detected_frequency,
+        dd.detection_detail_detected_thd
+      FROM tblappliance_detection_headers dh
+      INNER JOIN tblappliance_detection_details dd
+        ON dd.detection_detail_header_id = dh.detection_header_id
+      INNER JOIN tblappliance_types ap
+        ON ap.appliance_type_id = dd.detection_detail_appliance_type_id
+      INNER JOIN tblappliance_categories cat
+        ON cat.category_id = ap.appliance_type_category_id
+      WHERE dh.detection_header_reading_header_id IN (${placeholders})
+      ORDER BY dh.detection_header_reading_header_id DESC, dd.detection_detail_rank ASC, dd.detection_detail_id ASC
+    `,
+    readingIds,
+  );
+
+  const detectionsByReadingId = new Map<number, Array<{
+    detectionDetailId: number;
+    rank: number;
+    applianceTypeId: number;
+    applianceTypeName: string;
+    categoryName: string;
+    powerPattern: string;
+    status: 'ON' | 'OFF';
+    confidence: number;
+    detectedPower: number;
+    detectedFrequency: number;
+    detectedThd: number;
+    powerShare: number;
+  }>>();
+
+  for (const row of rows) {
+    const detections = detectionsByReadingId.get(row.reading_header_id) ?? [];
+    detections.push({
+      detectionDetailId: row.detection_detail_id,
+      rank: row.detection_detail_rank,
+      applianceTypeId: row.appliance_type_id,
+      applianceTypeName: row.appliance_type_name,
+      categoryName: row.category_name,
+      powerPattern: row.appliance_type_power_pattern,
+      status: row.detection_detail_status,
+      confidence: row.detection_detail_confidence,
+      detectedPower: row.detection_detail_detected_power,
+      detectedFrequency: row.detection_detail_detected_frequency,
+      detectedThd: row.detection_detail_detected_thd,
+      powerShare: 0,
+    });
+    detectionsByReadingId.set(row.reading_header_id, detections);
+  }
+
+  return readings.map((reading) => {
+    const detections = detectionsByReadingId.get(reading.readingId) ?? [];
+    const totalDetectedPower = detections.reduce(
+      (sum, detection) => sum + detection.detectedPower,
+      0,
+    );
+    const normalizedDetections = detections.map((detection) => ({
+      ...detection,
+      powerShare: totalDetectedPower > 0
+        ? Number((detection.detectedPower / totalDetectedPower).toFixed(4))
+        : 0,
+    }));
+    const primaryDetection = normalizedDetections[0];
+
+    return {
+      ...reading,
+      likelyActiveAppliance: primaryDetection?.applianceTypeName ?? reading.likelyActiveAppliance,
+      detectionConfidence: primaryDetection?.confidence ?? reading.detectionConfidence,
+      detections: normalizedDetections,
+    };
+  });
 }
 
 async function insertReadingDetail(
@@ -239,7 +350,12 @@ export async function getLatestReadingByRoomId(roomId: number) {
     [roomId],
   );
 
-  return rows[0] ? mapReadingRow(rows[0]) : null;
+  if (!rows[0]) {
+    return null;
+  }
+
+  const [reading] = await attachReadingDetections([mapReadingRow(rows[0])]);
+  return reading ?? null;
 }
 
 export async function getReadingHistoryByRoomId(roomId: number, limit = 10) {
@@ -277,5 +393,5 @@ export async function getReadingHistoryByRoomId(roomId: number, limit = 10) {
     [roomId, limit],
   );
 
-  return rows.map(mapReadingRow);
+  return attachReadingDetections(rows.map(mapReadingRow));
 }

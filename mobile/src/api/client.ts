@@ -18,7 +18,7 @@ export function getApiBaseUrl() {
 export async function apiRequest<T>(
   path: string,
   options?: {
-    method?: 'GET' | 'POST' | 'PATCH';
+    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
     token?: string | null;
     body?: unknown;
   },

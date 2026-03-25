@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import { authorize, authenticate } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
-import { createRoom, listRooms, updateRoom } from './rooms.service';
+import { createRoom, deleteRoom, listRooms, updateRoom } from './rooms.service';
 import { createRoomBodySchema, roomIdParamsSchema, updateRoomBodySchema } from './rooms.schemas';
 
 export const roomsRouter = Router();
@@ -37,6 +37,21 @@ roomsRouter.patch(
 
     res.json({
       message: 'Room updated successfully.',
+      data: room,
+    });
+  },
+);
+
+roomsRouter.delete(
+  '/:id',
+  validate({
+    params: roomIdParamsSchema,
+  }),
+  async (req, res) => {
+    const room = await deleteRoom(Number(req.params.id));
+
+    res.json({
+      message: 'Room deleted successfully.',
       data: room,
     });
   },

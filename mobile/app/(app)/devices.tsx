@@ -1,19 +1,21 @@
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 
 import { apiRequest } from '@/src/api/client';
 import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
 import { Field } from '@/src/components/Field';
+import { FormModal } from '@/src/components/FormModal';
 import { OptionChips } from '@/src/components/OptionChips';
 import { RequireRole } from '@/src/components/RequireRole';
 import { ScreenShell } from '@/src/components/ScreenShell';
 import { SectionCard } from '@/src/components/SectionCard';
+import { useAppAlert } from '@/src/context/AlertContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { Device } from '@/src/types/models';
 import { getErrorMessage, isUnauthorized } from '@/src/utils/errors';
-import { formatDateTime } from '@/src/utils/format';
+import { formatDateTime, formatDuration } from '@/src/utils/format';
 import { theme } from '@/src/utils/theme';
 
 const initialForm = {
@@ -23,11 +25,13 @@ const initialForm = {
 };
 
 export default function DevicesScreen() {
+  const { showError, showSuccess } = useAppAlert();
   const { token, logout } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
+  const [isFormModalVisible, setIsFormModalVisible] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -66,7 +70,9 @@ export default function DevicesScreen() {
     }
 
     if (!form.device_name.trim() || !form.device_identifier.trim()) {
-      setError('Device name and identifier are required.');
+      const nextError = 'Device name and identifier are required.';
+      setError(nextError);
+      showError('Unable to save device', nextError);
       return;
     }
 
@@ -74,6 +80,8 @@ export default function DevicesScreen() {
       setSaving(true);
       setError(null);
       setMessage(null);
+      let successTitle = '';
+      let successMessage = '';
 
       if (editingDeviceId) {
         await apiRequest(`/devices/${editingDeviceId}`, {
@@ -86,6 +94,8 @@ export default function DevicesScreen() {
           },
         });
         setMessage('Device updated successfully.');
+        successTitle = 'Device updated';
+        successMessage = 'The device details were saved successfully.';
       } else {
         await apiRequest('/devices', {
           method: 'POST',
@@ -97,13 +107,17 @@ export default function DevicesScreen() {
           },
         });
         setMessage('Device created successfully.');
+        successTitle = 'Device created';
+        successMessage = 'The device is now ready to be assigned to a room.';
       }
 
-      setEditingDeviceId(null);
-      setForm(initialForm);
+      closeFormModal();
       await loadDevices();
+      showSuccess(successTitle, successMessage);
     } catch (submitError) {
-      setError(getErrorMessage(submitError, 'Unable to save device.'));
+      const nextError = getErrorMessage(submitError, 'Unable to save device.');
+      setError(nextError);
+      showError('Unable to save device', nextError);
     } finally {
       setSaving(false);
     }
@@ -118,13 +132,22 @@ export default function DevicesScreen() {
     });
     setError(null);
     setMessage(null);
+    setIsFormModalVisible(true);
   }
 
-  function resetForm() {
+  function closeFormModal() {
+    setEditingDeviceId(null);
+    setForm(initialForm);
+    setError(null);
+    setIsFormModalVisible(false);
+  }
+
+  function openCreateModal() {
     setEditingDeviceId(null);
     setForm(initialForm);
     setError(null);
     setMessage(null);
+    setIsFormModalVisible(true);
   }
 
   return (
@@ -133,45 +156,13 @@ export default function DevicesScreen() {
         subtitle="Register device identifiers, keep them unique, and track whether they are online."
         title="Device Registry">
         <SectionCard>
-          <Text style={styles.sectionTitle}>
-            {editingDeviceId ? 'Update device' : 'Register new device'}
+          <Text style={styles.sectionTitle}>Device actions</Text>
+          <Text style={styles.helperText}>
+            Open the device form only when you need to register or update a device.
           </Text>
-          <Field
-            label="Device name"
-            onChangeText={(value) => setForm((current) => ({ ...current, device_name: value }))}
-            placeholder="ESP32 Room 101"
-            value={form.device_name}
-          />
-          <Field
-            autoCapitalize="characters"
-            label="Device identifier"
-            onChangeText={(value) =>
-              setForm((current) => ({ ...current, device_identifier: value.toUpperCase() }))
-            }
-            placeholder="DEV-101"
-            value={form.device_identifier}
-          />
-          <Text style={styles.label}>Status</Text>
-          <OptionChips
-            onSelect={(value) => setForm((current) => ({ ...current, device_status: value }))}
-            options={[
-              { label: 'online', value: 'online' as const },
-              { label: 'offline', value: 'offline' as const },
-            ]}
-            selectedValue={form.device_status}
-          />
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error && !isFormModalVisible ? <Text style={styles.errorText}>{error}</Text> : null}
           {message ? <Text style={styles.successText}>{message}</Text> : null}
-          <View style={styles.buttonRow}>
-            <Button
-              label={editingDeviceId ? 'Update device' : 'Create device'}
-              loading={saving}
-              onPress={() => void handleSubmit()}
-            />
-            {editingDeviceId ? (
-              <Button label="Cancel edit" onPress={resetForm} variant="ghost" />
-            ) : null}
-          </View>
+          <Button label="Add device" onPress={openCreateModal} />
         </SectionCard>
 
         <SectionCard>
@@ -198,6 +189,12 @@ export default function DevicesScreen() {
                 <Text style={styles.helperText}>
                   Last seen: {formatDateTime(device.deviceLastSeen)}
                 </Text>
+                <Text style={styles.helperText}>
+                  Uptime:{' '}
+                  {device.deviceUptimeSeconds !== null
+                    ? formatDuration(device.deviceUptimeSeconds)
+                    : 'Offline'}
+                </Text>
                 <Button label="Edit device" onPress={() => startEdit(device)} variant="ghost" />
               </View>
             ))
@@ -208,6 +205,46 @@ export default function DevicesScreen() {
             />
           )}
         </SectionCard>
+
+        <FormModal
+          onClose={closeFormModal}
+          subtitle="Set the device name, unique identifier, and status only when you need to create or edit a device."
+          title={editingDeviceId ? 'Update device' : 'Register new device'}
+          visible={isFormModalVisible}>
+          <Field
+            label="Device name"
+            onChangeText={(value) => setForm((current) => ({ ...current, device_name: value }))}
+            placeholder="ESP32 Room 101"
+            value={form.device_name}
+          />
+          <Field
+            autoCapitalize="characters"
+            label="Device identifier"
+            onChangeText={(value) =>
+              setForm((current) => ({ ...current, device_identifier: value.toUpperCase() }))
+            }
+            placeholder="DEV-101"
+            value={form.device_identifier}
+          />
+          <Text style={styles.label}>Status</Text>
+          <OptionChips
+            onSelect={(value) => setForm((current) => ({ ...current, device_status: value }))}
+            options={[
+              { label: 'online', value: 'online' as const },
+              { label: 'offline', value: 'offline' as const },
+            ]}
+            selectedValue={form.device_status}
+          />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <View style={styles.buttonRow}>
+            <Button
+              label={editingDeviceId ? 'Update device' : 'Add device'}
+              loading={saving}
+              onPress={() => void handleSubmit()}
+            />
+            <Button label="Cancel" onPress={closeFormModal} variant="ghost" />
+          </View>
+        </FormModal>
       </ScreenShell>
     </RequireRole>
   );

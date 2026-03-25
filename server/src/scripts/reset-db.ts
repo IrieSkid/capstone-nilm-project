@@ -96,7 +96,15 @@ async function insertSeedData() {
     await connection.query(
       `
         INSERT INTO tblappliance_categories (category_name)
-        VALUES ('Cooling'), ('Kitchen'), ('Entertainment'), ('Lighting'), ('Computing')
+        VALUES
+          ('Cooling'),
+          ('Kitchen'),
+          ('Entertainment'),
+          ('Lighting'),
+          ('Computing'),
+          ('Laundry'),
+          ('Heating'),
+          ('Utility')
       `,
     );
 
@@ -118,6 +126,36 @@ async function insertSeedData() {
       'category_name',
       'Entertainment',
     );
+    const lightingCategoryId = await resolveId(
+      connection,
+      'tblappliance_categories',
+      'category_name',
+      'Lighting',
+    );
+    const computingCategoryId = await resolveId(
+      connection,
+      'tblappliance_categories',
+      'category_name',
+      'Computing',
+    );
+    const laundryCategoryId = await resolveId(
+      connection,
+      'tblappliance_categories',
+      'category_name',
+      'Laundry',
+    );
+    const heatingCategoryId = await resolveId(
+      connection,
+      'tblappliance_categories',
+      'category_name',
+      'Heating',
+    );
+    const utilityCategoryId = await resolveId(
+      connection,
+      'tblappliance_categories',
+      'category_name',
+      'Utility',
+    );
 
     await connection.query(
       `
@@ -133,11 +171,21 @@ async function insertSeedData() {
           appliance_type_power_pattern
         )
         VALUES
-          (?, 'Air Conditioner', 1200, 0.85, 60.00, 0.50, 12.50, '{"3rd":0.12,"5th":0.08}', 'cyclic'),
+          (?, 'Inverter Air Conditioner', 820, 0.95, 60.00, 0.50, 6.50, '{"3rd":0.06,"5th":0.03}', 'variable'),
           (?, 'Electric Fan', 75, 0.90, 60.00, 0.50, 5.00, '{"3rd":0.03}', 'constant'),
           (?, 'Refrigerator', 150, 0.80, 60.00, 0.50, 10.00, '{"3rd":0.09,"5th":0.05}', 'cyclic'),
           (?, 'Rice Cooker', 700, 0.99, 60.00, 0.40, 3.00, '{"3rd":0.02}', 'variable'),
-          (?, 'LED TV', 120, 0.70, 60.00, 0.50, 18.00, '{"3rd":0.15,"5th":0.10}', 'constant')
+          (?, 'LED TV', 120, 0.70, 60.00, 0.50, 18.00, '{"3rd":0.15,"5th":0.10}', 'constant'),
+          (?, 'LED Light Bulb', 12, 0.95, 60.00, 0.30, 2.00, '{"3rd":0.01}', 'constant'),
+          (?, 'Wi-Fi Router', 18, 0.92, 60.00, 0.30, 2.50, '{"3rd":0.01}', 'constant'),
+          (?, 'Laptop Charger', 65, 0.90, 60.00, 0.30, 3.20, '{"3rd":0.02}', 'variable'),
+          (?, 'Desktop Computer', 250, 0.89, 60.00, 0.40, 5.50, '{"3rd":0.03,"5th":0.02}', 'variable'),
+          (?, 'Microwave Oven', 1100, 0.98, 60.00, 0.40, 4.50, '{"3rd":0.02}', 'constant'),
+          (?, 'Electric Kettle', 1500, 0.99, 60.00, 0.35, 2.50, '{"3rd":0.01}', 'constant'),
+          (?, 'Induction Cooker', 1800, 0.96, 60.00, 0.40, 6.00, '{"3rd":0.03,"5th":0.02}', 'variable'),
+          (?, 'Washing Machine', 500, 0.85, 60.00, 0.50, 9.50, '{"3rd":0.05,"5th":0.03}', 'cyclic'),
+          (?, 'Water Heater', 3500, 0.99, 60.00, 0.30, 2.20, '{"3rd":0.01}', 'constant'),
+          (?, 'Water Dispenser', 95, 0.88, 60.00, 0.40, 4.00, '{"3rd":0.02}', 'cyclic')
       `,
       [
         coolingCategoryId,
@@ -145,6 +193,16 @@ async function insertSeedData() {
         kitchenCategoryId,
         kitchenCategoryId,
         entertainmentCategoryId,
+        lightingCategoryId,
+        computingCategoryId,
+        computingCategoryId,
+        computingCategoryId,
+        kitchenCategoryId,
+        kitchenCategoryId,
+        kitchenCategoryId,
+        laundryCategoryId,
+        heatingCategoryId,
+        utilityCategoryId,
       ],
     );
 
@@ -232,7 +290,7 @@ async function insertSeedData() {
       connection,
       'tblappliance_types',
       'appliance_type_name',
-      'Air Conditioner',
+      'Inverter Air Conditioner',
     );
     const electricFanId = await resolveId(
       connection,
@@ -338,20 +396,20 @@ async function insertSeedData() {
         timestamp: '2026-03-20 09:15:00',
         voltage: 220.0,
         current: 5.0,
-        powerW: 1210.0,
+        powerW: 892.0,
         frequency: 60.01,
-        powerFactor: 0.85,
-        thdPercentage: 11.9,
-        energyKwh: 11.42,
+        powerFactor: 0.93,
+        thdPercentage: 7.1,
+        energyKwh: 8.42,
         detections: [
           {
             applianceTypeId: airConditionerId!,
-            detectedPower: 1138.0,
+            detectedPower: 818.0,
             confidence: 0.95,
           },
           {
             applianceTypeId: electricFanId!,
-            detectedPower: 72.0,
+            detectedPower: 74.0,
             confidence: 0.84,
           },
         ],
@@ -361,26 +419,26 @@ async function insertSeedData() {
         deviceId: deviceIdByIdentifier.get('DEV-101')!,
         timestamp: '2026-03-20 10:30:00',
         voltage: 220.0,
-        current: 6.28,
-        powerW: 1368.0,
+        current: 4.95,
+        powerW: 1016.0,
         frequency: 60.02,
-        powerFactor: 0.86,
-        thdPercentage: 12.6,
-        energyKwh: 12.01,
+        powerFactor: 0.94,
+        thdPercentage: 7.6,
+        energyKwh: 9.01,
         detections: [
           {
             applianceTypeId: airConditionerId!,
-            detectedPower: 1172.0,
+            detectedPower: 820.0,
             confidence: 0.96,
           },
           {
             applianceTypeId: electricFanId!,
-            detectedPower: 76.0,
+            detectedPower: 74.0,
             confidence: 0.88,
           },
           {
             applianceTypeId: ledTvId!,
-            detectedPower: 120.0,
+            detectedPower: 122.0,
             confidence: 0.8,
           },
         ],

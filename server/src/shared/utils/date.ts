@@ -22,3 +22,28 @@ export function toMySqlDateTime(value: string): string {
 
   return formatDateToMySqlDateTime(date);
 }
+
+export function parseStoredDateTime(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+export function getDurationSecondsSince(value: string | null | undefined, now = new Date()) {
+  const parsedDate = parseStoredDateTime(value);
+
+  if (!parsedDate) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor((now.getTime() - parsedDate.getTime()) / 1000));
+}
