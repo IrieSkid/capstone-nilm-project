@@ -202,6 +202,14 @@ function getApplianceBehavior(applianceName: string, portLabel: string) {
       periodTicks: 22,
       amplitude: 0.02,
     },
+    'Hisense 32-inch 1080p TV': {
+      periodTicks: 22,
+      amplitude: 0.02,
+    },
+    'PS4 Pro': {
+      periodTicks: 18,
+      amplitude: 0.1,
+    },
     'LED Light Bulb': {
       periodTicks: 30,
       amplitude: 0.01,
@@ -217,6 +225,26 @@ function getApplianceBehavior(applianceName: string, portLabel: string) {
     'Desktop Computer': {
       periodTicks: 18,
       amplitude: 0.08,
+    },
+    'Gaming PC (Ryzen 5 3600 + RX 6600)': {
+      periodTicks: 16,
+      amplitude: 0.12,
+    },
+    'iPad M2 Charger': {
+      periodTicks: 20,
+      amplitude: 0.04,
+    },
+    'Redmi Note 10 Charger': {
+      periodTicks: 20,
+      amplitude: 0.04,
+    },
+    'Redmi Note 13 Charger': {
+      periodTicks: 20,
+      amplitude: 0.04,
+    },
+    'iPhone 12 Charger': {
+      periodTicks: 20,
+      amplitude: 0.04,
     },
     'Microwave Oven': {
       periodTicks: 12,
@@ -241,6 +269,22 @@ function getApplianceBehavior(applianceName: string, portLabel: string) {
     'Water Dispenser': {
       periodTicks: 24,
       amplitude: 0.05,
+    },
+    'Water Dispenser with Hot': {
+      periodTicks: 20,
+      amplitude: 0.08,
+    },
+    'Panasonic NR-BP8515N Inverter Refrigerator': {
+      periodTicks: 16,
+      amplitude: 0.06,
+    },
+    'Old JVS Stereo Speaker': {
+      periodTicks: 18,
+      amplitude: 0.07,
+    },
+    '15W Guitar Amp': {
+      periodTicks: 16,
+      amplitude: 0.06,
     },
   }[applianceName] ?? defaults;
 

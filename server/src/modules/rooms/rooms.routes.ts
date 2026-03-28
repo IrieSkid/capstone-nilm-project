@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authorize, authenticate } from '../../shared/middleware/auth';
+import { authorize, authenticate, authorizePermission } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
 import { createRoom, deleteRoom, listRooms, updateRoom } from './rooms.service';
 import { createRoomBodySchema, roomIdParamsSchema, updateRoomBodySchema } from './rooms.schemas';
@@ -9,7 +9,7 @@ export const roomsRouter = Router();
 
 roomsRouter.use(authenticate, authorize('admin'));
 
-roomsRouter.get('/', async (_req, res) => {
+roomsRouter.get('/', authorizePermission('rooms.view'), async (_req, res) => {
   const rooms = await listRooms();
 
   res.json({
@@ -17,17 +17,23 @@ roomsRouter.get('/', async (_req, res) => {
   });
 });
 
-roomsRouter.post('/', validate({ body: createRoomBodySchema }), async (req, res) => {
+roomsRouter.post(
+  '/',
+  authorizePermission('rooms.create'),
+  validate({ body: createRoomBodySchema }),
+  async (req, res) => {
   const room = await createRoom(req.body);
 
   res.status(201).json({
     message: 'Room created successfully.',
     data: room,
   });
-});
+  },
+);
 
 roomsRouter.patch(
   '/:id',
+  authorizePermission('rooms.update'),
   validate({
     params: roomIdParamsSchema,
     body: updateRoomBodySchema,
@@ -44,6 +50,7 @@ roomsRouter.patch(
 
 roomsRouter.delete(
   '/:id',
+  authorizePermission('rooms.delete'),
   validate({
     params: roomIdParamsSchema,
   }),

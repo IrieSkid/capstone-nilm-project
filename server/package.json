@@ -7,6 +7,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "db:reset": "tsx src/scripts/reset-db.ts",
+    "db:migrate:rbac": "tsx src/scripts/migrate-add-rbac.ts",
+    "db:migrate:landlord": "tsx src/scripts/migrate-add-landlord-module.ts",
+    "db:migrate:billing": "tsx src/scripts/migrate-add-billing-module.ts",
+    "db:migrate:notifications": "tsx src/scripts/migrate-add-notification-alerts.ts",
+    "db:sync:appliances": "tsx src/scripts/sync-appliance-catalog.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "feeder": "tsx src/scripts/readings-feeder.ts",
     "feeder:dev": "tsx watch src/scripts/readings-feeder.ts"

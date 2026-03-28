@@ -20,12 +20,15 @@ import { useAuth } from '@/src/context/AuthContext';
 import { User } from '@/src/types/models';
 import { getErrorMessage, getFieldErrors } from '@/src/utils/errors';
 import { runAfterBlur } from '@/src/utils/focus';
+import { getDefaultAppPath } from '@/src/utils/navigation';
+import { getPhilippinePhoneMessage, isValidPhilippinePhone, normalizePhilippinePhone } from '@/src/utils/phone';
 import { theme } from '@/src/utils/theme';
 
 const emptyRegisterForm = {
   user_name: '',
   user_email: '',
   user_phone: '',
+  landlord_registration_code: '',
   user_password: '',
   confirm_password: '',
 };
@@ -61,8 +64,12 @@ function validateRegisterForm(form: RegisterForm) {
 
   if (!form.user_phone.trim()) {
     errors.user_phone = 'Enter your phone number.';
-  } else if (form.user_phone.trim().length < 7) {
-    errors.user_phone = 'Enter a valid phone number.';
+  } else if (!isValidPhilippinePhone(form.user_phone)) {
+    errors.user_phone = getPhilippinePhoneMessage();
+  }
+
+  if (!form.landlord_registration_code.trim()) {
+    errors.landlord_registration_code = 'Enter your landlord invite code.';
   }
 
   if (form.user_password.length < 8) {
@@ -87,8 +94,8 @@ function validateForgotPasswordForm(form: ForgotPasswordForm) {
 
   if (!form.user_phone.trim()) {
     errors.user_phone = 'Enter your phone number.';
-  } else if (form.user_phone.trim().length < 7) {
-    errors.user_phone = 'Enter a valid phone number.';
+  } else if (!isValidPhilippinePhone(form.user_phone)) {
+    errors.user_phone = getPhilippinePhoneMessage();
   }
 
   if (form.new_password.length < 8) {
@@ -126,7 +133,7 @@ export default function LoginScreen() {
   const [forgotForm, setForgotForm] = useState<ForgotPasswordForm>(emptyForgotPasswordForm);
 
   if (!loading && user) {
-    return <Redirect href="/(app)/dashboard" />;
+    return <Redirect href={getDefaultAppPath(user)} />;
   }
 
   function updateRegisterField(field: RegisterFieldName, value: string) {
@@ -189,9 +196,9 @@ export default function LoginScreen() {
       setSubmitting(true);
       setError(null);
       setLoginErrors({});
-      await login(email.trim(), password);
+      const loggedInUser = await login(email.trim(), password);
       runAfterBlur(() => {
-        router.replace('/(app)/dashboard');
+        router.replace(getDefaultAppPath(loggedInUser));
       });
     } catch (loginError) {
       const nextError = getErrorMessage(loginError, 'Unable to log in.');
@@ -223,7 +230,8 @@ export default function LoginScreen() {
         body: {
           user_name: registerForm.user_name.trim(),
           user_email: registerForm.user_email.trim(),
-          user_phone: registerForm.user_phone.trim(),
+          user_phone: normalizePhilippinePhone(registerForm.user_phone),
+          landlord_registration_code: registerForm.landlord_registration_code.trim(),
           user_password: registerForm.user_password,
           confirm_password: registerForm.confirm_password,
         },
@@ -233,8 +241,8 @@ export default function LoginScreen() {
       setPassword('');
       closeRegisterModal();
       showSuccess(
-        'Tenant account created',
-        'Your tenant account is ready. Sign in with your new credentials.',
+        'Registration submitted',
+        'Your tenant account is now waiting for landlord approval before you can sign in.',
       );
     } catch (registrationError) {
       const nextError = getErrorMessage(registrationError, 'Unable to register tenant.');
@@ -265,7 +273,7 @@ export default function LoginScreen() {
         method: 'POST',
         body: {
           user_email: forgotForm.user_email.trim(),
-          user_phone: forgotForm.user_phone.trim(),
+          user_phone: normalizePhilippinePhone(forgotForm.user_phone),
           new_password: forgotForm.new_password,
           confirm_new_password: forgotForm.confirm_new_password,
         },
@@ -340,7 +348,7 @@ export default function LoginScreen() {
 
       <FormModal
         onClose={closeRegisterModal}
-        subtitle="Create a tenant account with a real saved record in the NILM database."
+        subtitle="Register under a landlord by entering their invite code. The landlord must approve the request before login is allowed."
         title="Tenant registration"
         visible={registerVisible}>
         <Field
@@ -371,8 +379,18 @@ export default function LoginScreen() {
           keyboardType="phone-pad"
           label="Phone"
           onChangeText={(value) => updateRegisterField('user_phone', value)}
-          placeholder="Enter phone number"
+          placeholder="09171234567"
           value={registerForm.user_phone}
+        />
+        <Field
+          autoCapitalize="characters"
+          autoComplete="off"
+          error={registerErrors.landlord_registration_code}
+          importantForAutofill="no"
+          label="Landlord invite code"
+          onChangeText={(value) => updateRegisterField('landlord_registration_code', value.toUpperCase())}
+          placeholder="Example: LLD-8F4K2M"
+          value={registerForm.landlord_registration_code}
         />
         <Field
           autoComplete="new-password"
@@ -428,7 +446,7 @@ export default function LoginScreen() {
           keyboardType="phone-pad"
           label="Phone"
           onChangeText={(value) => updateForgotField('user_phone', value)}
-          placeholder="Enter phone number"
+          placeholder="09171234567"
           value={forgotForm.user_phone}
         />
         <Field

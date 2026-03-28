@@ -10,11 +10,18 @@ interface DeviceRow extends RowDataPacket {
   device_id: number;
   device_name: string;
   device_identifier: string;
+  device_owner_landlord_id: number | null;
   device_status: 'online' | 'offline';
   device_last_seen: string | null;
   created_at: string;
+  owner_landlord_name: string | null;
+  owner_landlord_email: string | null;
   room_id: number | null;
   room_name: string | null;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  landlord_id: number | null;
+  landlord_name: string | null;
   computed_status: 'online' | 'offline';
 }
 
@@ -27,6 +34,16 @@ interface DeviceUptimeContext {
   deviceId: number;
   computedStatus: 'online' | 'offline';
   deviceLastSeen: string | null;
+}
+
+interface ExistsRow extends RowDataPacket {
+  id: number;
+}
+
+interface DeviceRoomContextRow extends RowDataPacket {
+  room_id: number;
+  room_name: string;
+  room_landlord_id: number | null;
 }
 
 function computeContinuousUptimeSeconds(readingTimes: string[], lastSeen: string | null) {
@@ -123,14 +140,77 @@ function mapDeviceRow(row: DeviceRow) {
     deviceId: row.device_id,
     deviceName: row.device_name,
     deviceIdentifier: row.device_identifier,
+    deviceOwnerLandlordId: row.device_owner_landlord_id,
+    deviceOwnerLandlordName: row.owner_landlord_name,
+    deviceOwnerLandlordEmail: row.owner_landlord_email,
     deviceStatus: row.device_status,
     computedStatus: row.computed_status,
     deviceLastSeen: row.device_last_seen,
     createdAt: row.created_at,
     roomId: row.room_id,
     roomName: row.room_name,
+    tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
+    landlordId: row.landlord_id,
+    landlordName: row.landlord_name,
     deviceUptimeSeconds: null,
   };
+}
+
+async function assertLandlordExists(landlordId: number) {
+  const [rows] = await pool.query<ExistsRow[]>(
+    `
+      SELECT u.user_id AS id
+      FROM tblusers u
+      INNER JOIN tblroles r ON r.role_id = u.user_role_id
+      WHERE u.user_id = ? AND r.role_name = 'landlord'
+      LIMIT 1
+    `,
+    [landlordId],
+  );
+
+  if (!rows[0]) {
+    throw new AppError(400, 'Device owner must reference a valid landlord.');
+  }
+}
+
+async function getAssignedRoomForDevice(deviceId: number) {
+  const [rows] = await pool.query<DeviceRoomContextRow[]>(
+    `
+      SELECT
+        room_id,
+        room_name,
+        room_landlord_id
+      FROM tblrooms
+      WHERE room_device_id = ?
+      LIMIT 1
+    `,
+    [deviceId],
+  );
+
+  return rows[0] ?? null;
+}
+
+async function assertDeviceOwnerMatchesAssignedRoom(deviceId: number, nextOwnerLandlordId: number | null) {
+  const assignedRoom = await getAssignedRoomForDevice(deviceId);
+
+  if (!assignedRoom) {
+    return;
+  }
+
+  if (assignedRoom.room_landlord_id === null && nextOwnerLandlordId !== null) {
+    throw new AppError(
+      409,
+      'Assign the room to the same landlord before handing off this installed device.',
+    );
+  }
+
+  if (assignedRoom.room_landlord_id !== null && assignedRoom.room_landlord_id !== nextOwnerLandlordId) {
+    throw new AppError(
+      409,
+      `This device is installed in ${assignedRoom.room_name}. Device ownership must match that room's landlord.`,
+    );
+  }
 }
 
 export async function listDevices() {
@@ -140,11 +220,18 @@ export async function listDevices() {
         d.device_id,
         d.device_name,
         d.device_identifier,
+        d.device_owner_landlord_id,
         d.device_status,
         d.device_last_seen,
         d.created_at,
+        owner_landlord.user_name AS owner_landlord_name,
+        owner_landlord.user_email AS owner_landlord_email,
         room.room_id,
         room.room_name,
+        tenant.user_id AS tenant_id,
+        tenant.user_name AS tenant_name,
+        landlord.user_id AS landlord_id,
+        landlord.user_name AS landlord_name,
         CASE
           WHEN d.device_status = 'online'
             AND d.device_last_seen IS NOT NULL
@@ -153,7 +240,10 @@ export async function listDevices() {
           ELSE 'offline'
         END AS computed_status
       FROM tbldevices d
+      LEFT JOIN tblusers owner_landlord ON owner_landlord.user_id = d.device_owner_landlord_id
       LEFT JOIN tblrooms room ON room.room_device_id = d.device_id
+      LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      LEFT JOIN tblusers landlord ON landlord.user_id = room.room_landlord_id
       ORDER BY d.device_id
     `,
     [env.DEVICE_OFFLINE_MINUTES],
@@ -180,11 +270,18 @@ async function getDeviceById(deviceId: number) {
         d.device_id,
         d.device_name,
         d.device_identifier,
+        d.device_owner_landlord_id,
         d.device_status,
         d.device_last_seen,
         d.created_at,
+        owner_landlord.user_name AS owner_landlord_name,
+        owner_landlord.user_email AS owner_landlord_email,
         room.room_id,
         room.room_name,
+        tenant.user_id AS tenant_id,
+        tenant.user_name AS tenant_name,
+        landlord.user_id AS landlord_id,
+        landlord.user_name AS landlord_name,
         CASE
           WHEN d.device_status = 'online'
             AND d.device_last_seen IS NOT NULL
@@ -193,7 +290,10 @@ async function getDeviceById(deviceId: number) {
           ELSE 'offline'
         END AS computed_status
       FROM tbldevices d
+      LEFT JOIN tblusers owner_landlord ON owner_landlord.user_id = d.device_owner_landlord_id
       LEFT JOIN tblrooms room ON room.room_device_id = d.device_id
+      LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
+      LEFT JOIN tblusers landlord ON landlord.user_id = room.room_landlord_id
       WHERE d.device_id = ?
       LIMIT 1
     `,
@@ -221,22 +321,29 @@ async function getDeviceById(deviceId: number) {
 export async function createDevice(input: {
   device_name: string;
   device_identifier: string;
+  device_owner_landlord_id: number | null;
   device_status: 'online' | 'offline';
 }) {
+  if (input.device_owner_landlord_id !== null) {
+    await assertLandlordExists(input.device_owner_landlord_id);
+  }
+
   try {
     const [result] = await pool.query<ResultSetHeader>(
       `
         INSERT INTO tbldevices (
           device_name,
           device_identifier,
+          device_owner_landlord_id,
           device_status,
           device_last_seen
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
       `,
       [
         input.device_name,
         input.device_identifier,
+        input.device_owner_landlord_id,
         input.device_status,
         input.device_status === 'online' ? new Date() : null,
       ],
@@ -253,13 +360,24 @@ export async function updateDevice(
   input: Partial<{
     device_name: string;
     device_identifier: string;
+    device_owner_landlord_id: number | null;
     device_status: 'online' | 'offline';
   }>,
 ) {
-  await getDeviceById(deviceId);
+  const currentDevice = await getDeviceById(deviceId);
+  const effectiveOwnerLandlordId =
+    input.device_owner_landlord_id !== undefined
+      ? input.device_owner_landlord_id
+      : currentDevice.deviceOwnerLandlordId;
+
+  if (input.device_owner_landlord_id !== undefined && input.device_owner_landlord_id !== null) {
+    await assertLandlordExists(input.device_owner_landlord_id);
+  }
+
+  await assertDeviceOwnerMatchesAssignedRoom(deviceId, effectiveOwnerLandlordId);
 
   const fields: string[] = [];
-  const values: Array<string | Date | null> = [];
+  const values: Array<string | number | Date | null> = [];
 
   if (input.device_name !== undefined) {
     fields.push('device_name = ?');
@@ -269,6 +387,11 @@ export async function updateDevice(
   if (input.device_identifier !== undefined) {
     fields.push('device_identifier = ?');
     values.push(input.device_identifier);
+  }
+
+  if (input.device_owner_landlord_id !== undefined) {
+    fields.push('device_owner_landlord_id = ?');
+    values.push(input.device_owner_landlord_id);
   }
 
   if (input.device_status !== undefined) {

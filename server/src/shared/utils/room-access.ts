@@ -9,6 +9,24 @@ export async function assertRoomAccess(user: AuthenticatedUser, roomId: number) 
     return;
   }
 
+  if (user.roleName === 'landlord') {
+    const [landlordRows] = await pool.query<RowDataPacket[]>(
+      `
+        SELECT room_id
+        FROM tblrooms
+        WHERE room_id = ? AND room_landlord_id = ?
+        LIMIT 1
+      `,
+      [roomId, user.userId],
+    );
+
+    if (!landlordRows[0]) {
+      throw new AppError(403, 'You are not allowed to access this room.');
+    }
+
+    return;
+  }
+
   const [rows] = await pool.query<RowDataPacket[]>(
     `
       SELECT room_id
@@ -30,6 +48,20 @@ export async function getTenantRoomIds(userId: number): Promise<number[]> {
       SELECT room_id
       FROM tblrooms
       WHERE room_tenant_id = ?
+      ORDER BY room_id
+    `,
+    [userId],
+  );
+
+  return rows.map((row) => row.room_id);
+}
+
+export async function getLandlordRoomIds(userId: number): Promise<number[]> {
+  const [rows] = await pool.query<Array<RowDataPacket & { room_id: number }>>(
+    `
+      SELECT room_id
+      FROM tblrooms
+      WHERE room_landlord_id = ?
       ORDER BY room_id
     `,
     [userId],

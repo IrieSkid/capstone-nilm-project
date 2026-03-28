@@ -5,11 +5,15 @@ import morgan from 'morgan';
 
 import { env } from './config/env';
 import { authRouter } from './modules/auth/auth.routes';
+import { tenantBillingRouter } from './modules/billing/tenant-billing.routes';
 import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { detectionsRouter } from './modules/detections/detections.routes';
 import { devicePortsRouter } from './modules/device-ports/device-ports.routes';
 import { devicesRouter } from './modules/devices/devices.routes';
+import { landlordRouter } from './modules/landlord/landlord.routes';
+import { notificationsRouter } from './modules/notifications/notifications.routes';
 import { readingsRouter } from './modules/readings/readings.routes';
+import { rbacRouter } from './modules/rbac/rbac.routes';
 import { roomsRouter } from './modules/rooms/rooms.routes';
 import { usersRouter } from './modules/users/users.routes';
 import { errorHandler, notFoundHandler } from './shared/middleware/error-handler';
@@ -41,6 +45,10 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/readings`, readingsRouter);
   app.use(`${env.API_PREFIX}/detections`, detectionsRouter);
   app.use(`${env.API_PREFIX}/dashboard`, dashboardRouter);
+  app.use(`${env.API_PREFIX}/landlord`, landlordRouter);
+  app.use(`${env.API_PREFIX}/tenant/billing`, tenantBillingRouter);
+  app.use(`${env.API_PREFIX}/notifications`, notificationsRouter);
+  app.use(`${env.API_PREFIX}/rbac`, rbacRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

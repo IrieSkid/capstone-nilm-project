@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 
 import { findAuthenticatedUserById } from '../../modules/auth/auth.service';
-import { RoleName } from '../types/auth';
+import { AppModuleKey, RoleName } from '../types/auth';
 import { AppError } from '../utils/app-error';
 import { verifyAccessToken } from '../utils/jwt';
 
@@ -40,6 +40,26 @@ export function authorize(...roles: RoleName[]) {
 
     if (!roles.includes(req.user.roleName)) {
       return next(new AppError(403, 'You are not allowed to access this resource.'));
+    }
+
+    return next();
+  };
+}
+
+export function authorizePermission(moduleKey: AppModuleKey) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError(401, 'Authentication required.'));
+    }
+
+    if (req.user.roleName === 'admin') {
+      return next();
+    }
+
+    if (!req.user.permissions.includes(moduleKey)) {
+      return next(
+        new AppError(403, 'This module is currently disabled for your role by the administrator.'),
+      );
     }
 
     return next();

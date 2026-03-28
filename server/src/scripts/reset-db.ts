@@ -4,6 +4,11 @@ import path from 'node:path';
 import mysql, { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 import { env } from '../config/env';
+import {
+  APPLIANCE_CATALOG,
+  APPLIANCE_CATEGORY_NAMES,
+} from '../shared/constants/appliance-catalog';
+import { generateUniqueLandlordRegistrationCode } from '../shared/utils/landlord-code';
 import { hashPassword } from '../shared/utils/password';
 
 interface IdRow extends RowDataPacket {
@@ -28,6 +33,180 @@ interface SeedReadingInput {
   thdPercentage: number;
   energyKwh: number;
   detections: SeedDetectedApplianceInput[];
+}
+
+const RBAC_PERMISSIONS = [
+  {
+    key: 'dashboard.view',
+    name: 'Dashboard View',
+    description: 'Allows access to the main monitoring dashboard.',
+  },
+  {
+    key: 'profile.manage',
+    name: 'Profile Manage',
+    description: 'Allows users to update their own profile and password.',
+  },
+  {
+    key: 'users.view',
+    name: 'Users View',
+    description: 'Allows viewing the user management list.',
+  },
+  {
+    key: 'users.create',
+    name: 'Users Create',
+    description: 'Allows creating new user accounts.',
+  },
+  {
+    key: 'users.update',
+    name: 'Users Update',
+    description: 'Allows updating existing user accounts.',
+  },
+  {
+    key: 'rooms.view',
+    name: 'Rooms View',
+    description: 'Allows viewing the room management list.',
+  },
+  {
+    key: 'rooms.create',
+    name: 'Rooms Create',
+    description: 'Allows creating new rooms.',
+  },
+  {
+    key: 'rooms.update',
+    name: 'Rooms Update',
+    description: 'Allows updating room details and assignments.',
+  },
+  {
+    key: 'rooms.delete',
+    name: 'Rooms Delete',
+    description: 'Allows deleting fully unassigned rooms.',
+  },
+  {
+    key: 'devices.view',
+    name: 'Devices View',
+    description: 'Allows viewing the device registry list.',
+  },
+  {
+    key: 'devices.create',
+    name: 'Devices Create',
+    description: 'Allows registering new devices.',
+  },
+  {
+    key: 'devices.update',
+    name: 'Devices Update',
+    description: 'Allows updating existing devices.',
+  },
+  {
+    key: 'tenant.billing.view',
+    name: 'Tenant Billing View',
+    description: 'Allows tenants to view their active billing cycle and projected current bill.',
+  },
+  {
+    key: 'port_control.use',
+    name: 'Port Control Use',
+    description: 'Allows remote on/off control of assigned device ports.',
+  },
+  {
+    key: 'landlord.dashboard.view',
+    name: 'Landlord Dashboard View',
+    description: 'Allows landlords to view their owned-room dashboard.',
+  },
+  {
+    key: 'landlord.rooms.view',
+    name: 'Landlord Rooms View',
+    description: 'Allows landlords to view rooms assigned to them.',
+  },
+  {
+    key: 'landlord.rooms.create',
+    name: 'Landlord Rooms Create',
+    description: 'Allows landlords to create new rooms under their own ownership.',
+  },
+  {
+    key: 'landlord.rooms.update',
+    name: 'Landlord Rooms Update',
+    description: 'Allows landlords to update owned room rate, status, and room details allowed by policy.',
+  },
+  {
+    key: 'landlord.tenants.view',
+    name: 'Landlord Tenants View',
+    description: 'Allows landlords to view tenants in their owned rooms.',
+  },
+  {
+    key: 'landlord.tenants.assign',
+    name: 'Landlord Tenants Assign',
+    description: 'Allows landlords to assign or unassign tenants in their owned rooms.',
+  },
+  {
+    key: 'landlord.tenant_requests.view',
+    name: 'Landlord Tenant Requests View',
+    description: 'Allows landlords to view pending tenant registrations linked to their invite code.',
+  },
+  {
+    key: 'landlord.tenant_requests.approve',
+    name: 'Landlord Tenant Requests Approve',
+    description: 'Allows landlords to approve or reject pending tenant registrations.',
+  },
+  {
+    key: 'landlord.billing.view',
+    name: 'Landlord Billing View',
+    description: 'Allows landlords to view billing summaries for their owned rooms.',
+  },
+  {
+    key: 'landlord.billing.manage',
+    name: 'Landlord Billing Manage',
+    description: 'Allows landlords to open and close billing cycles for their owned rooms.',
+  },
+  {
+    key: 'landlord.devices.view',
+    name: 'Landlord Devices View',
+    description: 'Allows landlords to view devices assigned to their owned rooms.',
+  },
+  {
+    key: 'landlord.devices.assign',
+    name: 'Landlord Devices Assign',
+    description: 'Allows landlords to assign or unassign devices in their owned rooms.',
+  },
+  {
+    key: 'rbac.manage',
+    name: 'RBAC Manage',
+    description: 'Allows managing role and user access control settings.',
+  },
+] as const;
+
+async function insertRolePermissions(
+  connection: mysql.Connection,
+  roleId: number,
+  permissionKeys: ReadonlyArray<(typeof RBAC_PERMISSIONS)[number]['key']>,
+) {
+  const valueClauses: string[] = [];
+  const params: number[] = [];
+
+  for (const permissionKey of permissionKeys) {
+    const moduleId = await resolveId(connection, 'tblapp_modules', 'module_key', permissionKey);
+
+    if (!moduleId) {
+      throw new Error(`RBAC permission ${permissionKey} was not found during seed.`);
+    }
+
+    valueClauses.push('(?, ?, 1)');
+    params.push(roleId, moduleId);
+  }
+
+  if (valueClauses.length === 0) {
+    return;
+  }
+
+  await connection.query(
+    `
+      INSERT INTO tblrole_module_permissions (
+        role_permission_role_id,
+        role_permission_module_id,
+        can_access
+      )
+      VALUES ${valueClauses.join(', ')}
+    `,
+    params,
+  );
 }
 
 function escapeIdentifier(identifier: string) {
@@ -60,7 +239,17 @@ async function resolveId(
   keyValue: string,
 ) {
   const [rows] = await connection.query<IdRow[]>(
-    `SELECT ${table === 'tblroles' ? 'role_id' : table === 'tbluser_status' ? 'status_id' : table === 'tblappliance_categories' ? 'category_id' : 'appliance_type_id'} AS id FROM ${table} WHERE ${keyColumn} = ? LIMIT 1`,
+    `SELECT ${
+      table === 'tblroles'
+        ? 'role_id'
+        : table === 'tbluser_status'
+          ? 'status_id'
+          : table === 'tblappliance_categories'
+            ? 'category_id'
+            : table === 'tblapp_modules'
+              ? 'module_id'
+              : 'appliance_type_id'
+    } AS id FROM ${table} WHERE ${keyColumn} = ? LIMIT 1`,
     [keyValue],
   );
 
@@ -89,73 +278,46 @@ async function insertSeedData() {
     await connection.query(
       `
         INSERT INTO tbluser_status (status_name)
-        VALUES ('active'), ('inactive'), ('suspended')
+        VALUES ('active'), ('inactive'), ('suspended'), ('pending_approval'), ('rejected')
       `,
     );
 
     await connection.query(
       `
-        INSERT INTO tblappliance_categories (category_name)
-        VALUES
-          ('Cooling'),
-          ('Kitchen'),
-          ('Entertainment'),
-          ('Lighting'),
-          ('Computing'),
-          ('Laundry'),
-          ('Heating'),
-          ('Utility')
+        INSERT INTO tblapp_modules (module_key, module_name, module_description)
+        VALUES ${RBAC_PERMISSIONS.map(() => '(?, ?, ?)').join(', ')}
       `,
+      RBAC_PERMISSIONS.flatMap((permission) => [
+        permission.key,
+        permission.name,
+        permission.description,
+      ]),
     );
 
-    const coolingCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Cooling',
+    await connection.query(
+      `
+        INSERT INTO tblappliance_categories (category_name)
+        VALUES ${APPLIANCE_CATEGORY_NAMES.map(() => '(?)').join(', ')}
+      `,
+      APPLIANCE_CATEGORY_NAMES,
     );
-    const kitchenCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Kitchen',
-    );
-    const entertainmentCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Entertainment',
-    );
-    const lightingCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Lighting',
-    );
-    const computingCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Computing',
-    );
-    const laundryCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Laundry',
-    );
-    const heatingCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Heating',
-    );
-    const utilityCategoryId = await resolveId(
-      connection,
-      'tblappliance_categories',
-      'category_name',
-      'Utility',
-    );
+
+    const categoryIdByName = new Map<string, number>();
+
+    for (const categoryName of APPLIANCE_CATEGORY_NAMES) {
+      const categoryId = await resolveId(
+        connection,
+        'tblappliance_categories',
+        'category_name',
+        categoryName,
+      );
+
+      if (!categoryId) {
+        throw new Error(`Appliance category ${categoryName} was not found during seed.`);
+      }
+
+      categoryIdByName.set(categoryName, categoryId);
+    }
 
     await connection.query(
       `
@@ -170,40 +332,19 @@ async function insertSeedData() {
           appliance_type_harmonic_signature,
           appliance_type_power_pattern
         )
-        VALUES
-          (?, 'Inverter Air Conditioner', 820, 0.95, 60.00, 0.50, 6.50, '{"3rd":0.06,"5th":0.03}', 'variable'),
-          (?, 'Electric Fan', 75, 0.90, 60.00, 0.50, 5.00, '{"3rd":0.03}', 'constant'),
-          (?, 'Refrigerator', 150, 0.80, 60.00, 0.50, 10.00, '{"3rd":0.09,"5th":0.05}', 'cyclic'),
-          (?, 'Rice Cooker', 700, 0.99, 60.00, 0.40, 3.00, '{"3rd":0.02}', 'variable'),
-          (?, 'LED TV', 120, 0.70, 60.00, 0.50, 18.00, '{"3rd":0.15,"5th":0.10}', 'constant'),
-          (?, 'LED Light Bulb', 12, 0.95, 60.00, 0.30, 2.00, '{"3rd":0.01}', 'constant'),
-          (?, 'Wi-Fi Router', 18, 0.92, 60.00, 0.30, 2.50, '{"3rd":0.01}', 'constant'),
-          (?, 'Laptop Charger', 65, 0.90, 60.00, 0.30, 3.20, '{"3rd":0.02}', 'variable'),
-          (?, 'Desktop Computer', 250, 0.89, 60.00, 0.40, 5.50, '{"3rd":0.03,"5th":0.02}', 'variable'),
-          (?, 'Microwave Oven', 1100, 0.98, 60.00, 0.40, 4.50, '{"3rd":0.02}', 'constant'),
-          (?, 'Electric Kettle', 1500, 0.99, 60.00, 0.35, 2.50, '{"3rd":0.01}', 'constant'),
-          (?, 'Induction Cooker', 1800, 0.96, 60.00, 0.40, 6.00, '{"3rd":0.03,"5th":0.02}', 'variable'),
-          (?, 'Washing Machine', 500, 0.85, 60.00, 0.50, 9.50, '{"3rd":0.05,"5th":0.03}', 'cyclic'),
-          (?, 'Water Heater', 3500, 0.99, 60.00, 0.30, 2.20, '{"3rd":0.01}', 'constant'),
-          (?, 'Water Dispenser', 95, 0.88, 60.00, 0.40, 4.00, '{"3rd":0.02}', 'cyclic')
+        VALUES ${APPLIANCE_CATALOG.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
       `,
-      [
-        coolingCategoryId,
-        coolingCategoryId,
-        kitchenCategoryId,
-        kitchenCategoryId,
-        entertainmentCategoryId,
-        lightingCategoryId,
-        computingCategoryId,
-        computingCategoryId,
-        computingCategoryId,
-        kitchenCategoryId,
-        kitchenCategoryId,
-        kitchenCategoryId,
-        laundryCategoryId,
-        heatingCategoryId,
-        utilityCategoryId,
-      ],
+      APPLIANCE_CATALOG.flatMap((entry) => [
+        categoryIdByName.get(entry.categoryName),
+        entry.applianceTypeName,
+        entry.typicalPowerW,
+        entry.powerFactor,
+        entry.nominalFrequencyHz,
+        entry.frequencyTolerance,
+        entry.thdReference,
+        entry.harmonicSignature,
+        entry.powerPattern,
+      ]),
     );
 
     const adminRoleId = await resolveId(connection, 'tblroles', 'role_name', 'admin');
@@ -211,25 +352,55 @@ async function insertSeedData() {
     const tenantRoleId = await resolveId(connection, 'tblroles', 'role_name', 'tenant');
     const activeStatusId = await resolveId(connection, 'tbluser_status', 'status_name', 'active');
 
+    await insertRolePermissions(
+      connection,
+      adminRoleId!,
+      RBAC_PERMISSIONS.map((permission) => permission.key),
+    );
+    await insertRolePermissions(connection, tenantRoleId!, [
+      'dashboard.view',
+      'profile.manage',
+      'tenant.billing.view',
+      'port_control.use',
+    ]);
+    await insertRolePermissions(connection, landlordRoleId!, [
+      'profile.manage',
+      'landlord.dashboard.view',
+      'landlord.rooms.view',
+      'landlord.rooms.create',
+      'landlord.rooms.update',
+      'landlord.tenants.view',
+      'landlord.tenants.assign',
+      'landlord.tenant_requests.view',
+      'landlord.tenant_requests.approve',
+      'landlord.billing.view',
+      'landlord.billing.manage',
+      'landlord.devices.view',
+      'landlord.devices.assign',
+    ]);
+
     const adminPassword = await hashPassword('Admin123!');
     const landlordPassword = await hashPassword('Landlord123!');
     const tenantPassword = await hashPassword('Tenant123!');
+    const landlordRegistrationCode = await generateUniqueLandlordRegistrationCode(connection);
 
     await connection.query(
       `
         INSERT INTO tblusers (
           user_role_id,
           user_status_id,
+          user_landlord_id,
+          landlord_registration_code,
           user_name,
           user_email,
           user_password,
           user_phone
         )
         VALUES
-          (?, ?, 'System Admin', 'admin@nilm.local', ?, '09170000001'),
-          (?, ?, 'Boarding House Owner', 'landlord@nilm.local', ?, '09170000002'),
-          (?, ?, 'Juan Dela Cruz', 'juan@nilm.local', ?, '09170000003'),
-          (?, ?, 'Maria Lopez', 'maria@nilm.local', ?, '09170000004')
+          (?, ?, NULL, NULL, 'System Admin', 'admin@nilm.local', ?, '09170000001'),
+          (?, ?, NULL, ?, 'Boarding House Owner', 'landlord@nilm.local', ?, '09170000002'),
+          (?, ?, ?, NULL, 'Juan Dela Cruz', 'juan@nilm.local', ?, '09170000003'),
+          (?, ?, ?, NULL, 'Maria Lopez', 'maria@nilm.local', ?, '09170000004')
       `,
       [
         adminRoleId,
@@ -237,12 +408,15 @@ async function insertSeedData() {
         adminPassword,
         landlordRoleId,
         activeStatusId,
+        landlordRegistrationCode,
         landlordPassword,
         tenantRoleId,
         activeStatusId,
+        null,
         tenantPassword,
         tenantRoleId,
         activeStatusId,
+        null,
         tenantPassword,
       ],
     );
@@ -260,17 +434,31 @@ async function insertSeedData() {
 
     await connection.query(
       `
+        UPDATE tblusers
+        SET user_landlord_id = ?
+        WHERE user_email IN ('juan@nilm.local', 'maria@nilm.local')
+      `,
+      [userIdByEmail.get('landlord@nilm.local')],
+    );
+
+    await connection.query(
+      `
         INSERT INTO tbldevices (
           device_name,
           device_identifier,
+          device_owner_landlord_id,
           device_status,
           device_last_seen
         )
         VALUES
-          ('ESP32 Room 101', 'DEV-101', 'online', '2026-03-20 10:30:00'),
-          ('ESP32 Room 102', 'DEV-102', 'online', '2026-03-20 10:45:00'),
-          ('ESP32 Spare Device', 'DEV-103', 'offline', NULL)
+          ('ESP32 Room 101', 'DEV-101', ?, 'online', '2026-03-20 10:30:00'),
+          ('ESP32 Room 102', 'DEV-102', ?, 'online', '2026-03-20 10:45:00'),
+          ('ESP32 Spare Device', 'DEV-103', NULL, 'offline', NULL)
       `,
+      [
+        userIdByEmail.get('landlord@nilm.local'),
+        userIdByEmail.get('landlord@nilm.local'),
+      ],
     );
 
     const [deviceRows] = await connection.query<
@@ -321,18 +509,21 @@ async function insertSeedData() {
       `
         INSERT INTO tblrooms (
           room_name,
+          room_landlord_id,
           room_tenant_id,
           room_device_id,
           room_rate_per_kwh,
           room_status
         )
         VALUES
-          ('Room 101', ?, ?, 12.50, 'occupied'),
-          ('Room 102', ?, ?, 11.75, 'occupied')
+          ('Room 101', ?, ?, ?, 12.50, 'occupied'),
+          ('Room 102', ?, ?, ?, 11.75, 'occupied')
       `,
       [
+        userIdByEmail.get('landlord@nilm.local'),
         userIdByEmail.get('juan@nilm.local'),
         deviceIdByIdentifier.get('DEV-101'),
+        userIdByEmail.get('landlord@nilm.local'),
         userIdByEmail.get('maria@nilm.local'),
         deviceIdByIdentifier.get('DEV-102'),
       ],
@@ -512,6 +703,8 @@ async function insertSeedData() {
     }
 
     await connection.commit();
+
+    return landlordRegistrationCode;
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -601,10 +794,11 @@ async function insertReadingAndDetection(connection: mysql.Connection, reading: 
 
 async function main() {
   await runSchema();
-  await insertSeedData();
+  const landlordRegistrationCode = await insertSeedData();
 
   console.log(`Database ${env.DB_NAME} has been reset and seeded successfully.`);
   console.log('Demo accounts: admin@nilm.local / Admin123!, juan@nilm.local / Tenant123!');
+  console.log(`Seed landlord invite code: ${landlordRegistrationCode}`);
 }
 
 main().catch((error) => {

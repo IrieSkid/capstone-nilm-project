@@ -48,6 +48,25 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(date);
 }
 
+export function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return 'N/A';
+  }
+
+  const normalized = value.length === 10 ? `${value}T00:00:00` : value;
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
+}
+
 export function formatDuration(value: number | null | undefined) {
   if (value === null || value === undefined) {
     return 'N/A';
@@ -72,4 +91,22 @@ export function formatDuration(value: number | null | undefined) {
   }
 
   return `${totalMinutes}m`;
+}
+
+export function formatStatusLabel(value: string | null | undefined) {
+  if (!value) {
+    return 'N/A';
+  }
+
+  return value
+    .replace(/-/g, ' ')
+    .split('_')
+    .flatMap((segment) => segment.split(' '))
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+export function formatDisplayLabel(value: string | null | undefined) {
+  return formatStatusLabel(value);
 }

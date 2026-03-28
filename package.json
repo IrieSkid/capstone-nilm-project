@@ -9,6 +9,11 @@
     "dev:server": "npm run dev --prefix server",
     "dev:feeder": "npm run feeder:dev --prefix server",
     "db:reset": "npm run db:reset --prefix server",
+    "db:migrate:rbac": "npm run db:migrate:rbac --prefix server",
+    "db:migrate:landlord": "npm run db:migrate:landlord --prefix server",
+    "db:migrate:billing": "npm run db:migrate:billing --prefix server",
+    "db:migrate:notifications": "npm run db:migrate:notifications --prefix server",
+    "db:sync:appliances": "npm run db:sync:appliances --prefix server",
     "typecheck:server": "npm run typecheck --prefix server",
     "lint:mobile": "npm run lint --prefix mobile"
   }

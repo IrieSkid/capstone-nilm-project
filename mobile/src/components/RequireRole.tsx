@@ -3,17 +3,21 @@ import { Redirect, useRouter } from 'expo-router';
 import { Text, View, StyleSheet } from 'react-native';
 
 import { useAuth } from '../context/AuthContext';
-import { RoleName } from '../types/models';
+import { AppModuleKey, RoleName } from '../types/models';
+import { hasModuleAccess } from '../utils/access';
 import { runAfterBlur } from '../utils/focus';
+import { getDefaultAppPath } from '../utils/navigation';
 import { Button } from './Button';
 import { SectionCard } from './SectionCard';
 import { theme } from '../utils/theme';
 
 export function RequireRole({
   roles,
+  permissionKey,
   children,
 }: {
   roles: RoleName[];
+  permissionKey?: AppModuleKey;
   children: ReactNode;
 }) {
   const { user } = useAuth();
@@ -33,10 +37,32 @@ export function RequireRole({
             on the backend.
           </Text>
           <Button
-            label="Return to dashboard"
+            label="Go to allowed screen"
             onPress={() =>
               runAfterBlur(() => {
-                router.replace('/(app)/dashboard');
+                router.replace(getDefaultAppPath(user));
+              })
+            }
+          />
+        </SectionCard>
+      </View>
+    );
+  }
+
+  if (permissionKey && !hasModuleAccess(user, permissionKey)) {
+    return (
+      <View style={styles.wrapper}>
+        <SectionCard>
+          <Text style={styles.title}>Module disabled</Text>
+          <Text style={styles.description}>
+            This screen is currently disabled for your role by the administrator through the access
+            control module.
+          </Text>
+          <Button
+            label="Go to allowed screen"
+            onPress={() =>
+              runAfterBlur(() => {
+                router.replace(getDefaultAppPath(user));
               })
             }
           />

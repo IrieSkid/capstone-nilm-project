@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authorize, authenticate } from '../../shared/middleware/auth';
+import { authorize, authenticate, authorizePermission } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
 import { createDevice, listDevices, updateDevice } from './devices.service';
 import {
@@ -13,7 +13,7 @@ export const devicesRouter = Router();
 
 devicesRouter.use(authenticate, authorize('admin'));
 
-devicesRouter.get('/', async (_req, res) => {
+devicesRouter.get('/', authorizePermission('devices.view'), async (_req, res) => {
   const devices = await listDevices();
 
   res.json({
@@ -21,17 +21,23 @@ devicesRouter.get('/', async (_req, res) => {
   });
 });
 
-devicesRouter.post('/', validate({ body: createDeviceBodySchema }), async (req, res) => {
+devicesRouter.post(
+  '/',
+  authorizePermission('devices.create'),
+  validate({ body: createDeviceBodySchema }),
+  async (req, res) => {
   const device = await createDevice(req.body);
 
   res.status(201).json({
     message: 'Device created successfully.',
     data: device,
   });
-});
+  },
+);
 
 devicesRouter.patch(
   '/:id',
+  authorizePermission('devices.update'),
   validate({
     params: deviceIdParamsSchema,
     body: updateDeviceBodySchema,

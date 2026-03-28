@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authenticate, authorize } from '../../shared/middleware/auth';
+import { authenticate, authorize, authorizePermission } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
 import { assertRoomAccess } from '../../shared/utils/room-access';
 import { roomIdParamSchema } from '../readings/readings.schemas';
@@ -19,6 +19,7 @@ devicePortsRouter.get(
   '/room/:roomId',
   authenticate,
   authorize('admin', 'tenant'),
+  authorizePermission('port_control.use'),
   validate({ params: roomIdParamSchema }),
   async (req, res) => {
     const roomId = Number(req.params.roomId);
@@ -36,6 +37,7 @@ devicePortsRouter.patch(
   '/:portId',
   authenticate,
   authorize('admin', 'tenant'),
+  authorizePermission('port_control.use'),
   validate({
     params: devicePortIdParamSchema,
     body: updateDevicePortBodySchema,

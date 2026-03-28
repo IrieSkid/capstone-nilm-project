@@ -12,6 +12,7 @@ export const roomIdParamsSchema = z.object({
 
 export const createRoomBodySchema = z.object({
   room_name: z.string().trim().min(2, 'Room name must be at least 2 characters long.'),
+  room_landlord_id: nullableForeignKeySchema,
   room_tenant_id: nullableForeignKeySchema,
   room_device_id: nullableForeignKeySchema,
   room_rate_per_kwh: z.coerce.number().positive('Rate per kWh must be greater than 0.'),
@@ -21,6 +22,7 @@ export const createRoomBodySchema = z.object({
 export const updateRoomBodySchema = z
   .object({
     room_name: z.string().trim().min(2, 'Room name must be at least 2 characters long.').optional(),
+    room_landlord_id: nullableForeignKeySchema.optional(),
     room_tenant_id: nullableForeignKeySchema.optional(),
     room_device_id: nullableForeignKeySchema.optional(),
     room_rate_per_kwh: z.coerce.number().positive('Rate per kWh must be greater than 0.').optional(),

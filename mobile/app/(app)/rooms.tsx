@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { apiRequest } from '@/src/api/client';
@@ -7,21 +7,23 @@ import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
 import { Field } from '@/src/components/Field';
 import { FormModal } from '@/src/components/FormModal';
-import { OptionChips } from '@/src/components/OptionChips';
 import { RequireRole } from '@/src/components/RequireRole';
 import { ScreenShell } from '@/src/components/ScreenShell';
 import { SectionCard } from '@/src/components/SectionCard';
+import { SelectField } from '@/src/components/SelectField';
+import { SummaryGrid } from '@/src/components/SummaryGrid';
 import { useAppAlert } from '@/src/context/AlertContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { Device, Room, UsersPayload } from '@/src/types/models';
 import { getErrorMessage, getFieldErrors, isUnauthorized } from '@/src/utils/errors';
-import { formatCurrency } from '@/src/utils/format';
+import { formatCurrency, formatDisplayLabel } from '@/src/utils/format';
 import { theme } from '@/src/utils/theme';
 
 const UNASSIGNED_OPTION = 'unassigned';
 
 const initialForm = {
   room_name: '',
+  room_landlord_id: null as number | null,
   room_tenant_id: null as number | null,
   room_device_id: null as number | null,
   room_rate_per_kwh: '12.00',
@@ -29,7 +31,15 @@ const initialForm = {
 };
 
 type RoomFieldErrors = Partial<
-  Record<'room_name' | 'room_tenant_id' | 'room_device_id' | 'room_rate_per_kwh' | 'room_status', string>
+  Record<
+    | 'room_name'
+    | 'room_landlord_id'
+    | 'room_tenant_id'
+    | 'room_device_id'
+    | 'room_rate_per_kwh'
+    | 'room_status',
+    string
+  >
 >;
 
 export default function RoomsScreen() {
@@ -39,6 +49,7 @@ export default function RoomsScreen() {
   const [usersPayload, setUsersPayload] = useState<UsersPayload | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
@@ -47,14 +58,21 @@ export default function RoomsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<RoomFieldErrors>({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | Room['roomStatus']>('all');
+  const [setupFilter, setSetupFilter] = useState<'all' | 'ready' | 'needs_setup'>('all');
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { pullToRefresh?: boolean }) => {
     if (!token) {
       return;
     }
 
     try {
-      setLoading(true);
+      if (options?.pullToRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const [roomsData, usersData, devicesData] = await Promise.all([
         apiRequest<Room[]>('/rooms', { token }),
@@ -74,6 +92,7 @@ export default function RoomsScreen() {
       setError(getErrorMessage(loadError, 'Unable to load rooms.'));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [logout, token]);
 
@@ -116,6 +135,7 @@ export default function RoomsScreen() {
 
       const body = {
         room_name: form.room_name.trim(),
+        room_landlord_id: form.room_landlord_id,
         room_tenant_id: form.room_tenant_id,
         room_device_id: form.room_device_id,
         room_rate_per_kwh: parsedRate,
@@ -123,20 +143,24 @@ export default function RoomsScreen() {
       };
 
       if (editingRoomId) {
-        await apiRequest(`/rooms/${editingRoomId}`, {
+        const updatedRoom = await apiRequest<Room>(`/rooms/${editingRoomId}`, {
           method: 'PATCH',
           token,
           body,
         });
+        setRooms((current) =>
+          current.map((room) => (room.roomId === updatedRoom.roomId ? updatedRoom : room)),
+        );
         setMessage('Room updated successfully.');
         successTitle = 'Room updated';
         successMessage = 'The room details and assignments were saved successfully.';
       } else {
-        await apiRequest('/rooms', {
+        const createdRoom = await apiRequest<Room>('/rooms', {
           method: 'POST',
           token,
           body,
         });
+        setRooms((current) => [...current, createdRoom]);
         setMessage('Room created successfully.');
         successTitle = 'Room created';
         successMessage = 'The room is ready and can stay unassigned until needed.';
@@ -186,6 +210,7 @@ export default function RoomsScreen() {
     setEditingRoomId(room.roomId);
     setForm({
       room_name: room.roomName,
+      room_landlord_id: room.landlordId,
       room_tenant_id: room.tenantId,
       room_device_id: room.deviceId,
       room_rate_per_kwh: String(room.roomRatePerKwh),
@@ -220,11 +245,41 @@ export default function RoomsScreen() {
       .map((room) => room.tenantId as number),
   );
 
+  const unavailableDeviceIds = new Set(
+    rooms
+      .filter((room) => room.deviceId !== null && room.roomId !== editingRoomId)
+      .map((room) => room.deviceId as number),
+  );
+
   const tenantOptions: Array<{ label: string; value: number | typeof UNASSIGNED_OPTION }> = [
     { label: 'Unassigned tenant', value: UNASSIGNED_OPTION },
     ...(
       usersPayload?.users
-        .filter((user) => user.roleName === 'tenant' && !unavailableTenantIds.has(user.userId))
+        .filter(
+          (user) =>
+            user.roleName === 'tenant'
+            && !unavailableTenantIds.has(user.userId)
+            && (
+              form.room_landlord_id === null
+              || user.landlordOwnerId === form.room_landlord_id
+              || form.room_tenant_id === user.userId
+            ),
+        )
+        .map((user) => ({
+          label:
+            form.room_landlord_id !== null && user.landlordOwnerName
+              ? `${user.userName} (${user.landlordOwnerName})`
+              : user.userName,
+          value: user.userId,
+        })) || []
+    ),
+  ];
+
+  const landlordOptions: Array<{ label: string; value: number | typeof UNASSIGNED_OPTION }> = [
+    { label: 'Unassigned landlord', value: UNASSIGNED_OPTION },
+    ...(
+      usersPayload?.users
+        .filter((user) => user.roleName === 'landlord')
         .map((user) => ({
           label: user.userName,
           value: user.userId,
@@ -234,67 +289,228 @@ export default function RoomsScreen() {
 
   const deviceOptions: Array<{ label: string; value: number | typeof UNASSIGNED_OPTION }> = [
     { label: 'Unassigned device', value: UNASSIGNED_OPTION },
-    ...devices.map((device) => ({
-      label: `${device.deviceIdentifier ?? 'No identifier'}${device.roomName ? ` • ${device.roomName}` : ''}`,
-      value: device.deviceId,
-    })),
+    ...devices
+      .filter(
+        (device) =>
+          !unavailableDeviceIds.has(device.deviceId)
+          && (
+            form.room_device_id === device.deviceId
+            || (
+              form.room_landlord_id === null
+                ? device.deviceOwnerLandlordId === null
+                : device.deviceOwnerLandlordId === form.room_landlord_id
+            )
+          ),
+      )
+      .map((device) => ({
+        label:
+          `${device.deviceIdentifier ?? 'No identifier'} - ${device.deviceName}`
+          + (
+            device.deviceOwnerLandlordName
+              ? ` (${device.deviceOwnerLandlordName})`
+              : ' (Admin inventory)'
+          ),
+        value: device.deviceId,
+      })),
   ];
+
   const editingRoom = editingRoomId !== null
     ? rooms.find((room) => room.roomId === editingRoomId) ?? null
     : null;
+
   const canDeleteEditingRoom = Boolean(
-    editingRoom &&
-      editingRoom.roomStatus === 'available' &&
-      editingRoom.tenantId === null &&
-      editingRoom.deviceId === null,
+    editingRoom
+      && editingRoom.roomStatus === 'available'
+      && editingRoom.landlordId === null
+      && editingRoom.tenantId === null
+      && editingRoom.deviceId === null,
   );
 
+  const filteredRooms = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return rooms.filter((room) => {
+      const isReady = Boolean(room.landlordId && room.tenantId && room.deviceId);
+      const matchesSearch =
+        !normalizedSearch
+        || [
+          room.roomName,
+          room.landlordName ?? '',
+          room.tenantName ?? '',
+          room.deviceIdentifier ?? '',
+          room.deviceName ?? '',
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedSearch);
+      const matchesStatus = statusFilter === 'all' || room.roomStatus === statusFilter;
+      const matchesSetup =
+        setupFilter === 'all'
+        || (setupFilter === 'ready' ? isReady : !isReady);
+
+      return matchesSearch && matchesStatus && matchesSetup;
+    });
+  }, [rooms, searchTerm, setupFilter, statusFilter]);
+
+  const summaryItems = useMemo(() => {
+    const readyCount = rooms.filter((room) => room.landlordId && room.tenantId && room.deviceId).length;
+
+    return [
+      { label: 'Total rooms', value: String(rooms.length) },
+      { label: 'Ready rooms', value: String(readyCount) },
+      {
+        label: 'Occupied',
+        value: String(rooms.filter((room) => room.roomStatus === 'occupied').length),
+      },
+      { label: 'Needs setup', value: String(rooms.length - readyCount) },
+    ];
+  }, [rooms]);
+
   return (
-    <RequireRole roles={['admin']}>
+    <RequireRole roles={['admin']} permissionKey="rooms.view">
       <ScreenShell
-        subtitle="Create rooms first, then optionally assign tenants and devices whenever they are ready."
+        onRefresh={() => void loadData({ pullToRefresh: true })}
+        refreshing={refreshing}
+        subtitle="Create rooms first, then assign landlord, tenant, and device only when each one is ready."
         title="Room Management">
         <SectionCard>
-          <Text style={styles.sectionTitle}>Room actions</Text>
+          <Text style={styles.sectionTitle}>Overview</Text>
           <Text style={styles.helperText}>
-            Create empty rooms now, then update tenant and device assignments later as occupancy changes.
+            This view shows which rooms are fully set up and which ones still need assignments before monitoring begins.
           </Text>
+          <SummaryGrid items={summaryItems} />
+        </SectionCard>
+
+        <SectionCard>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
           <Text style={styles.helperText}>
-            Delete is only allowed for rooms that are available and have no assigned tenant or device.
+            Use this when you need to add a room before reviewing or filtering the current list.
           </Text>
+          <View style={styles.actionRow}>
+            <Button label="Create room" onPress={openCreateModal} />
+          </View>
           {error && !isFormModalVisible ? <Text style={styles.errorText}>{error}</Text> : null}
           {message ? <Text style={styles.successText}>{message}</Text> : null}
-          <Button label="Create room" onPress={openCreateModal} />
+        </SectionCard>
+
+        <SectionCard>
+          <Text style={styles.sectionTitle}>Find and manage</Text>
+          <Text style={styles.helperText}>
+            Search by room, landlord, tenant, or device to narrow the list before opening one.
+          </Text>
+          <Field
+            autoCapitalize="words"
+            label="Search rooms"
+            onChangeText={setSearchTerm}
+            placeholder="Search room, landlord, tenant, or device"
+            value={searchTerm}
+          />
+          <View style={styles.filterRow}>
+            <View style={styles.filterItem}>
+              <SelectField
+                label="Status filter"
+                options={[
+                  { label: 'All statuses', value: 'all' as const },
+                  { label: formatDisplayLabel('available'), value: 'available' as const },
+                  { label: formatDisplayLabel('occupied'), value: 'occupied' as const },
+                ]}
+                selectedValue={statusFilter}
+                onSelect={(value) => setStatusFilter(value as 'all' | Room['roomStatus'])}
+              />
+            </View>
+            <View style={styles.filterItem}>
+              <SelectField
+                label="Setup filter"
+                options={[
+                  { label: 'All rooms', value: 'all' as const },
+                  { label: 'Ready rooms', value: 'ready' as const },
+                  { label: 'Needs setup', value: 'needs_setup' as const },
+                ]}
+                selectedValue={setupFilter}
+                onSelect={(value) => setSetupFilter(value as 'all' | 'ready' | 'needs_setup')}
+              />
+            </View>
+          </View>
+          <Text style={styles.helperText}>
+            Delete is only allowed for rooms that are available and have no assigned landlord, tenant, or device.
+          </Text>
         </SectionCard>
 
         <SectionCard>
           <Text style={styles.sectionTitle}>Configured rooms</Text>
+          {!loading ? (
+            <Text style={styles.helperText}>
+              Showing {filteredRooms.length} of {rooms.length} rooms.
+            </Text>
+          ) : null}
           {loading ? (
             <ActivityIndicator color={theme.colors.primary} />
-          ) : rooms.length ? (
-            rooms.map((room) => (
-              <View key={room.roomId} style={styles.listItem}>
-                <Text style={styles.itemTitle}>{room.roomName}</Text>
-                <Text style={styles.helperText}>
-                  {room.tenantName ?? 'Unassigned tenant'} • {room.deviceIdentifier ?? 'Unassigned device'}
-                </Text>
-                <Text style={styles.helperText}>
-                  Rate: {formatCurrency(room.roomRatePerKwh)} / kWh • Status: {room.roomStatus}
-                </Text>
-                <Button label="Edit room" onPress={() => startEdit(room)} variant="ghost" />
-              </View>
-            ))
+          ) : filteredRooms.length ? (
+            filteredRooms.map((room, index) => {
+              const isReady = Boolean(room.landlordId && room.tenantId && room.deviceId);
+              const assignmentsComplete = [
+                room.landlordId,
+                room.tenantId,
+                room.deviceId,
+              ].filter(Boolean).length;
+
+              return (
+                <View
+                  key={room.roomId}
+                  style={[styles.listCard, index === 0 ? styles.listCardFirst : null]}>
+                  <View style={styles.listHeader}>
+                    <Text style={styles.itemTitle}>{room.roomName}</Text>
+                    <View style={styles.badgeRow}>
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{formatDisplayLabel(room.roomStatus)}</Text>
+                      </View>
+                      <View style={[styles.badge, styles.badgeMuted]}>
+                        <Text style={styles.badgeText}>
+                          {isReady ? 'Ready to monitor' : 'Needs setup'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={styles.helperText}>
+                    Landlord: {room.landlordName ?? 'Unassigned landlord'}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Tenant: {room.tenantName ?? 'Unassigned tenant'}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Device: {room.deviceIdentifier ?? 'Unassigned device'}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <View style={styles.metaCard}>
+                      <Text style={styles.metaLabel}>Billing rate</Text>
+                      <Text style={styles.metaValue}>{formatCurrency(room.roomRatePerKwh)} / kWh</Text>
+                    </View>
+                    <View style={styles.metaCard}>
+                      <Text style={styles.metaLabel}>Assignments</Text>
+                      <Text style={styles.metaValue}>{assignmentsComplete} of 3 complete</Text>
+                    </View>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Button label="Edit room" onPress={() => startEdit(room)} variant="ghost" />
+                  </View>
+                </View>
+              );
+            })
           ) : (
             <EmptyState
-              description="Create rooms even before a tenant moves in or a device is installed."
-              title="No rooms yet"
+              description={
+                rooms.length
+                  ? 'Try a different search or filter to find the room you need.'
+                  : 'Create rooms even before a tenant moves in or a device is installed.'
+              }
+              title={rooms.length ? 'No matching rooms' : 'No rooms yet'}
             />
           )}
         </SectionCard>
 
         <FormModal
           onClose={closeFormModal}
-          subtitle="Set the room name, rate, and status. Tenant and device assignments can stay unassigned."
+          subtitle="Set the room name, rate, and status. Landlord, tenant, and device assignments can stay unassigned."
           title={editingRoomId ? 'Update room' : 'Create room'}
           visible={isFormModalVisible}>
           <Field
@@ -314,40 +530,52 @@ export default function RoomsScreen() {
             placeholder="12.50"
             value={form.room_rate_per_kwh}
           />
-          <Text style={styles.label}>Tenant</Text>
-          <OptionChips
+          <SelectField
+            error={fieldErrors.room_landlord_id}
+            label="Landlord"
+            options={landlordOptions}
+            selectedValue={form.room_landlord_id ?? UNASSIGNED_OPTION}
+            onSelect={(value) =>
+              setForm((current) => ({
+                ...current,
+                room_landlord_id: value === UNASSIGNED_OPTION ? null : Number(value),
+              }))
+            }
+          />
+          <SelectField
+            error={fieldErrors.room_tenant_id}
+            label="Tenant"
+            options={tenantOptions}
+            selectedValue={form.room_tenant_id ?? UNASSIGNED_OPTION}
             onSelect={(value) =>
               setForm((current) => ({
                 ...current,
                 room_tenant_id: value === UNASSIGNED_OPTION ? null : Number(value),
               }))
             }
-            options={tenantOptions}
-            selectedValue={form.room_tenant_id ?? UNASSIGNED_OPTION}
           />
-          {fieldErrors.room_tenant_id ? <Text style={styles.errorText}>{fieldErrors.room_tenant_id}</Text> : null}
-          <Text style={styles.label}>Device</Text>
-          <OptionChips
+          <SelectField
+            error={fieldErrors.room_device_id}
+            label="Device"
+            options={deviceOptions}
+            selectedValue={form.room_device_id ?? UNASSIGNED_OPTION}
             onSelect={(value) =>
               setForm((current) => ({
                 ...current,
                 room_device_id: value === UNASSIGNED_OPTION ? null : Number(value),
               }))
             }
-            options={deviceOptions}
-            selectedValue={form.room_device_id ?? UNASSIGNED_OPTION}
           />
-          {fieldErrors.room_device_id ? <Text style={styles.errorText}>{fieldErrors.room_device_id}</Text> : null}
-          <Text style={styles.label}>Status</Text>
-          <OptionChips
-            onSelect={(value) => setForm((current) => ({ ...current, room_status: value }))}
+          <SelectField
+            error={fieldErrors.room_status}
+            label="Status"
             options={[
-              { label: 'available', value: 'available' as const },
-              { label: 'occupied', value: 'occupied' as const },
+              { label: formatDisplayLabel('available'), value: 'available' as const },
+              { label: formatDisplayLabel('occupied'), value: 'occupied' as const },
             ]}
             selectedValue={form.room_status}
+            onSelect={(value) => setForm((current) => ({ ...current, room_status: value }))}
           />
-          {fieldErrors.room_status ? <Text style={styles.errorText}>{fieldErrors.room_status}</Text> : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <View style={styles.buttonRow}>
             <Button
@@ -377,12 +605,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
   },
-  label: {
-    color: theme.colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
   buttonRow: {
     gap: 10,
   },
@@ -394,19 +616,96 @@ const styles = StyleSheet.create({
     color: theme.colors.success,
     fontWeight: '600',
   },
-  listItem: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.line,
-    paddingTop: 14,
-    gap: 6,
-  },
-  itemTitle: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
   helperText: {
     color: theme.colors.textMuted,
     lineHeight: 20,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  filterItem: {
+    flex: 1,
+    minWidth: 160,
+  },
+  listCard: {
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.overlayStrong,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: 14,
+    gap: 8,
+  },
+  listCardFirst: {
+    borderWidth: 1,
+  },
+  listHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  itemTitle: {
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  badge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: 'rgba(79,163,181,0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  badgeMuted: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.overlayStrong,
+  },
+  badgeText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  metaCard: {
+    flex: 1,
+    minWidth: 150,
+    minHeight: 72,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.overlayMedium,
+    backgroundColor: theme.colors.surface,
+    gap: 4,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  metaLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  metaValue: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  actionRow: {
+    paddingTop: 4,
   },
 });

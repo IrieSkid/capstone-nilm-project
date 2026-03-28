@@ -370,11 +370,13 @@ export async function createDetectionForReading(connection: PoolConnection, inpu
     };
   }
 
-  const candidates = buildCombinations(profiles, 1, Math.min(profiles.length, MAX_DETECTION_COMBINATION_SIZE))
-    .map((combination) => scoreCombination(combination, input))
-    .sort((left, right) => right.confidence - left.confidence);
-
-  const bestMatch = candidates[0];
+  // In this MVP, powered device ports represent the appliances that are actively supplied.
+  // We score that exact powered set so the dashboard stays stable across feeder cycles while
+  // still producing a real confidence value from the aggregate reading.
+  const bestMatch = scoreCombination(
+    profiles.slice(0, MAX_DETECTION_COMBINATION_SIZE),
+    input,
+  );
 
   if (!bestMatch || bestMatch.confidence < env.DETECTION_MIN_CONFIDENCE) {
     return {

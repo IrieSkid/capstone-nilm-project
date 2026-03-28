@@ -40,9 +40,9 @@
       }
 
       .page {
-        max-width: 1380px;
+        max-width: 1780px;
         margin: 0 auto;
-        padding: 24px;
+        padding: 20px;
       }
 
       .hero {
@@ -71,15 +71,27 @@
       .subtitle {
         margin: 10px 0 0;
         color: #d2e0e4;
-        max-width: 860px;
+        max-width: 980px;
         line-height: 1.6;
       }
 
-      .top-grid {
+      .workspace {
         display: grid;
-        grid-template-columns: 1.2fr 1fr;
+        grid-template-columns: 360px minmax(0, 1fr);
         gap: 18px;
         margin-top: 18px;
+        align-items: start;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 16px;
+      }
+
+      .sidebar-stack,
+      .main-stack {
+        display: grid;
+        gap: 18px;
       }
 
       .panel {
@@ -101,15 +113,24 @@
 
       .controls {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
         align-items: end;
+      }
+
+      .controls .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .controls .btn {
+        width: 100%;
       }
 
       .field {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        min-width: 0;
       }
 
       .field label {
@@ -121,6 +142,7 @@
 
       .field input,
       .field select {
+        width: 100%;
         min-height: 44px;
         padding: 10px 12px;
         border-radius: 12px;
@@ -185,7 +207,7 @@
 
       .metrics {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
       }
 
@@ -210,11 +232,9 @@
         font-weight: 800;
       }
 
-      .live-grid {
+      .rooms-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 18px;
-        margin-top: 20px;
       }
 
       .room-card {
@@ -226,6 +246,24 @@
         flex-direction: column;
         gap: 16px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        overflow: hidden;
+      }
+
+      .room-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .room-layout > * {
+        min-width: 0;
+      }
+
+      .column-stack {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
       }
 
       .room-header {
@@ -266,7 +304,7 @@
 
       .live-summary {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -284,8 +322,12 @@
       }
 
       .card-section {
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
-        padding-top: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.02);
+        min-width: 0;
+        overflow: hidden;
       }
 
       .section-heading {
@@ -309,6 +351,8 @@
         padding: 12px;
         display: grid;
         gap: 10px;
+        min-width: 0;
+        overflow: hidden;
       }
 
       .port-top {
@@ -316,6 +360,7 @@
         justify-content: space-between;
         align-items: center;
         gap: 12px;
+        flex-wrap: wrap;
       }
 
       .port-actions {
@@ -326,8 +371,10 @@
 
       .port-form {
         display: grid;
-        grid-template-columns: 1fr 1.4fr 0.8fr auto;
+        grid-template-columns: minmax(120px, 0.95fr) minmax(220px, 1.35fr) minmax(92px, 0.7fr) minmax(108px, 120px);
         gap: 10px;
+        align-items: end;
+        min-width: 0;
       }
 
       .live-appliances {
@@ -341,13 +388,14 @@
         border: 1px solid var(--line);
         background: rgba(255, 255, 255, 0.025);
         padding: 10px 12px;
+        min-width: 0;
       }
 
       .result-list {
         display: flex;
         flex-direction: column;
         gap: 10px;
-        max-height: 360px;
+        max-height: 64vh;
         overflow: auto;
       }
 
@@ -398,16 +446,32 @@
         color: var(--muted);
       }
 
-      @media (max-width: 1120px) {
-        .top-grid,
-        .live-grid {
+      @media (max-width: 1440px) {
+        .port-form {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 1280px) {
+        .workspace {
           grid-template-columns: 1fr;
         }
 
+        .sidebar {
+          position: static;
+        }
+
         .controls,
-        .metrics,
-        .live-summary {
+        .metrics {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .room-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .live-summary {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
         .port-form {
@@ -421,9 +485,12 @@
         }
 
         .controls,
-        .metrics,
         .live-summary {
           grid-template-columns: 1fr;
+        }
+
+        .metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .room-header,
@@ -448,37 +515,41 @@
         </p>
       </section>
 
-      <div class="top-grid">
-        <section class="panel">
-          <h2 class="panel-title">Feeder Controls</h2>
-          <div class="controls">
-            <div class="field">
-              <label for="intervalMs">Interval (ms)</label>
-              <input id="intervalMs" type="number" min="500" step="500" value="2000" />
-            </div>
-            <button class="btn success" id="startButton" type="button">Start / Restart</button>
-            <button class="btn secondary" id="tickButton" type="button">Tick once</button>
-            <button class="btn warning" id="refreshButton" type="button">Refresh view</button>
-            <button class="btn danger" id="stopButton" type="button">Stop feeder</button>
+      <div class="workspace">
+        <aside class="sidebar">
+          <div class="sidebar-stack">
+            <section class="panel">
+              <h2 class="panel-title">Feeder Controls</h2>
+              <div class="controls">
+                <div class="field full">
+                  <label for="intervalMs">Interval (ms)</label>
+                  <input id="intervalMs" type="number" min="500" step="500" value="2000" />
+                </div>
+                <button class="btn success" id="startButton" type="button">Start / Restart</button>
+                <button class="btn secondary" id="tickButton" type="button">Tick once</button>
+                <button class="btn warning" id="refreshButton" type="button">Refresh view</button>
+                <button class="btn danger" id="stopButton" type="button">Stop feeder</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2 class="panel-title">Feeder Status</h2>
+              <div class="metrics" id="statusMetrics"></div>
+            </section>
+
+            <section class="panel">
+              <h2 class="panel-title">Recent Feeder Results</h2>
+              <div id="resultsContainer" class="result-list"></div>
+            </section>
           </div>
-        </section>
+        </aside>
 
-        <section class="panel">
-          <h2 class="panel-title">Feeder Status</h2>
-          <div class="metrics" id="statusMetrics"></div>
-        </section>
-      </div>
-
-      <div class="top-grid">
-        <section class="panel">
-          <h2 class="panel-title">Room / Device Control</h2>
-          <div id="roomsContainer" class="live-grid"></div>
-        </section>
-
-        <section class="panel">
-          <h2 class="panel-title">Recent Feeder Results</h2>
-          <div id="resultsContainer" class="result-list"></div>
-        </section>
+        <main class="main-stack">
+          <section class="panel">
+            <h2 class="panel-title">Room / Device Control</h2>
+            <div id="roomsContainer" class="rooms-grid"></div>
+          </section>
+        </main>
       </div>
     </div>
 
@@ -773,129 +844,139 @@
                   </span>
                 </div>
 
-                <div class="live-summary">
-                  <div class="summary-chip">
-                    <div class="muted">Total power</div>
-                    <strong>${formatNumber(lastReading?.powerW, 'W')}</strong>
+                <div class="room-layout">
+                  <div class="column-stack">
+                    <section class="card-section">
+                      <h4 class="section-heading">Live snapshot</h4>
+                      <div class="live-summary">
+                        <div class="summary-chip">
+                          <div class="muted">Total power</div>
+                          <strong>${formatNumber(lastReading?.powerW, 'W')}</strong>
+                        </div>
+                        <div class="summary-chip">
+                          <div class="muted">Current</div>
+                          <strong>${formatNumber(lastReading?.current, 'A')}</strong>
+                        </div>
+                        <div class="summary-chip">
+                          <div class="muted">Energy</div>
+                          <strong>${formatNumber(lastReading?.energyKwh, 'kWh')}</strong>
+                        </div>
+                        <div class="summary-chip">
+                          <div class="muted">Posted</div>
+                          <strong style="font-size: 15px">${escapeHtml(formatDateTime(target?.lastPostedAt))}</strong>
+                        </div>
+                      </div>
+                    </section>
                   </div>
-                  <div class="summary-chip">
-                    <div class="muted">Current</div>
-                    <strong>${formatNumber(lastReading?.current, 'A')}</strong>
+
+                  <div class="column-stack">
+                    <section class="card-section">
+                      <h4 class="section-heading">Live active appliances</h4>
+                      <div class="live-appliances">
+                        ${
+                          activeAppliances.length > 0
+                            ? activeAppliances
+                                .map(
+                                  (appliance) => `
+                                    <div class="live-appliance">
+                                      <strong>${escapeHtml(appliance.portLabel)} · ${escapeHtml(appliance.applianceName)}</strong>
+                                      <div class="muted">${escapeHtml(appliance.categoryName)} · ${escapeHtml(appliance.powerPattern)} · supply ${escapeHtml(appliance.supplyState.toUpperCase())}</div>
+                                      <div>${formatNumber(appliance.powerW, 'W')} · PF ${formatNumber(appliance.powerFactor)} · THD ${formatNumber(appliance.thdPercentage, '%')}</div>
+                                    </div>
+                                  `,
+                                )
+                                .join('')
+                            : '<div class="empty">No active appliances on this device right now.</div>'
+                        }
+                      </div>
+                    </section>
+
+                    <section class="card-section">
+                      <h4 class="section-heading">Plug new appliance</h4>
+                      <div class="port-form">
+                        <div class="field">
+                          <label for="add-label-${room.deviceId}">Port label</label>
+                          <input id="add-label-${room.deviceId}" type="text" placeholder="Leave blank for auto label" value="${escapeHtml(addDraft.portLabel)}" oninput="rememberAddDraft(${room.deviceId})" />
+                        </div>
+                        <div class="field">
+                          <label for="add-appliance-${room.deviceId}">Appliance type</label>
+                          <select id="add-appliance-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
+                            ${getApplianceOptions(addDraft.applianceTypeId)}
+                          </select>
+                        </div>
+                        <div class="field">
+                          <label for="add-state-${room.deviceId}">Initial state</label>
+                          <select id="add-state-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
+                            <option value="on" ${addDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
+                            <option value="off" ${addDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
+                          </select>
+                        </div>
+                        <div class="field">
+                          <label>&nbsp;</label>
+                          <button class="btn success" type="button" onclick="addPort(${room.deviceId})">Plug In</button>
+                        </div>
+                      </div>
+                    </section>
                   </div>
-                  <div class="summary-chip">
-                    <div class="muted">Energy</div>
-                    <strong>${formatNumber(lastReading?.energyKwh, 'kWh')}</strong>
-                  </div>
-                  <div class="summary-chip">
-                    <div class="muted">Posted</div>
-                    <strong style="font-size: 15px">${escapeHtml(formatDateTime(target?.lastPostedAt))}</strong>
-                  </div>
+
                 </div>
 
                 <section class="card-section">
-                  <h4 class="section-heading">Live active appliances</h4>
-                  <div class="live-appliances">
-                    ${
-                      activeAppliances.length > 0
-                        ? activeAppliances
-                            .map(
-                              (appliance) => `
-                                <div class="live-appliance">
-                                  <strong>${escapeHtml(appliance.portLabel)} · ${escapeHtml(appliance.applianceName)}</strong>
-                                  <div class="muted">${escapeHtml(appliance.categoryName)} · ${escapeHtml(appliance.powerPattern)} · supply ${escapeHtml(appliance.supplyState.toUpperCase())}</div>
-                                  <div>${formatNumber(appliance.powerW, 'W')} · PF ${formatNumber(appliance.powerFactor)} · THD ${formatNumber(appliance.thdPercentage, '%')}</div>
-                                </div>
-                              `,
-                            )
-                            .join('')
-                        : '<div class="empty">No active appliances on this device right now.</div>'
-                    }
-                  </div>
-                </section>
+                      <h4 class="section-heading">Configured device ports</h4>
+                      <div class="port-list">
+                        ${
+                          room.ports.length > 0
+                            ? room.ports
+                                .map(
+                                  (port) => {
+                                    const portDraft = getPortDraft(port);
 
-                <section class="card-section">
-                  <h4 class="section-heading">Plug new appliance</h4>
-                  <div class="port-form">
-                    <div class="field">
-                      <label for="add-label-${room.deviceId}">Port label</label>
-                      <input id="add-label-${room.deviceId}" type="text" placeholder="Leave blank for auto label" value="${escapeHtml(addDraft.portLabel)}" oninput="rememberAddDraft(${room.deviceId})" />
-                    </div>
-                    <div class="field">
-                      <label for="add-appliance-${room.deviceId}">Appliance type</label>
-                      <select id="add-appliance-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
-                        ${getApplianceOptions(addDraft.applianceTypeId)}
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="add-state-${room.deviceId}">Initial state</label>
-                      <select id="add-state-${room.deviceId}" onchange="rememberAddDraft(${room.deviceId})">
-                        <option value="on" ${addDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
-                        <option value="off" ${addDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label>&nbsp;</label>
-                      <button class="btn success" type="button" onclick="addPort(${room.deviceId})">Plug In</button>
-                    </div>
-                  </div>
-                </section>
-
-                <section class="card-section">
-                  <h4 class="section-heading">Configured device ports</h4>
-                  <div class="port-list">
-                    ${
-                      room.ports.length > 0
-                        ? room.ports
-                            .map(
-                              (port) => {
-                                const portDraft = getPortDraft(port);
-
-                                return `
-                                <div class="port-card">
-                                  <div class="port-top">
-                                    <div>
-                                      <strong>${escapeHtml(port.portLabel)} · ${escapeHtml(port.applianceTypeName)}</strong>
-                                      <div class="muted">
-                                        ${escapeHtml(port.categoryName)} · ${escapeHtml(port.powerPattern)} · changed ${escapeHtml(formatDateTime(port.lastChangedAt))}
+                                    return `
+                                    <div class="port-card">
+                                      <div class="port-top">
+                                        <div>
+                                          <strong>${escapeHtml(port.portLabel)} · ${escapeHtml(port.applianceTypeName)}</strong>
+                                          <div class="muted">
+                                            ${escapeHtml(port.categoryName)} · ${escapeHtml(port.powerPattern)} · changed ${escapeHtml(formatDateTime(port.lastChangedAt))}
+                                          </div>
+                                        </div>
+                                        <div class="port-actions">
+                                          <button class="btn secondary" type="button" onclick="togglePort(${port.devicePortId}, 'on')">Turn on</button>
+                                          <button class="btn warning" type="button" onclick="togglePort(${port.devicePortId}, 'off')">Turn off</button>
+                                          <button class="btn danger" type="button" onclick="removePort(${port.devicePortId})">Unplug</button>
+                                        </div>
+                                      </div>
+                                      <div class="port-form">
+                                        <div class="field">
+                                          <label for="label-${port.devicePortId}">Port label</label>
+                                          <input id="label-${port.devicePortId}" type="text" value="${escapeHtml(portDraft.portLabel)}" oninput="rememberPortDraft(${port.devicePortId})" />
+                                        </div>
+                                        <div class="field">
+                                          <label for="appliance-${port.devicePortId}">Appliance type</label>
+                                          <select id="appliance-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
+                                            ${getApplianceOptions(portDraft.applianceTypeId)}
+                                          </select>
+                                        </div>
+                                        <div class="field">
+                                          <label for="state-${port.devicePortId}">Supply state</label>
+                                          <select id="state-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
+                                            <option value="on" ${portDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
+                                            <option value="off" ${portDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
+                                          </select>
+                                        </div>
+                                        <div class="field">
+                                          <label>&nbsp;</label>
+                                          <button class="btn" type="button" onclick="savePort(${port.devicePortId})">Save changes</button>
+                                        </div>
                                       </div>
                                     </div>
-                                    <div class="port-actions">
-                                      <button class="btn secondary" type="button" onclick="togglePort(${port.devicePortId}, 'on')">Turn on</button>
-                                      <button class="btn warning" type="button" onclick="togglePort(${port.devicePortId}, 'off')">Turn off</button>
-                                      <button class="btn danger" type="button" onclick="removePort(${port.devicePortId})">Unplug</button>
-                                    </div>
-                                  </div>
-                                  <div class="port-form">
-                                    <div class="field">
-                                      <label for="label-${port.devicePortId}">Port label</label>
-                                      <input id="label-${port.devicePortId}" type="text" value="${escapeHtml(portDraft.portLabel)}" oninput="rememberPortDraft(${port.devicePortId})" />
-                                    </div>
-                                    <div class="field">
-                                      <label for="appliance-${port.devicePortId}">Appliance type</label>
-                                      <select id="appliance-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
-                                        ${getApplianceOptions(portDraft.applianceTypeId)}
-                                      </select>
-                                    </div>
-                                    <div class="field">
-                                      <label for="state-${port.devicePortId}">Supply state</label>
-                                      <select id="state-${port.devicePortId}" onchange="rememberPortDraft(${port.devicePortId})">
-                                        <option value="on" ${portDraft.supplyState === 'on' ? 'selected' : ''}>On</option>
-                                        <option value="off" ${portDraft.supplyState === 'off' ? 'selected' : ''}>Off</option>
-                                      </select>
-                                    </div>
-                                    <div class="field">
-                                      <label>&nbsp;</label>
-                                      <button class="btn" type="button" onclick="savePort(${port.devicePortId})">Save changes</button>
-                                    </div>
-                                  </div>
-                                </div>
-                              `;
-                              },
-                            )
-                            .join('')
-                        : '<div class="empty">No appliance ports configured for this device yet.</div>'
-                    }
-                  </div>
+                                  `;
+                                  },
+                                )
+                                .join('')
+                            : '<div class="empty">No appliance ports configured for this device yet.</div>'
+                        }
+                      </div>
                 </section>
               </article>
             `;

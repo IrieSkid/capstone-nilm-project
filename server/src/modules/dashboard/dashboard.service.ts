@@ -18,6 +18,9 @@ interface TenantRoomRow extends RowDataPacket {
   room_name: string;
   room_rate_per_kwh: number;
   room_status: 'available' | 'occupied';
+  landlord_id: number | null;
+  landlord_name: string | null;
+  landlord_email: string | null;
   device_id: number;
   device_name: string;
   device_identifier: string;
@@ -47,6 +50,46 @@ interface AdminDeviceRow extends RowDataPacket {
   computed_status: 'online' | 'offline';
 }
 
+function enrichDetectedAppliancesWithPorts<
+  T extends {
+    applianceTypeId: number;
+    applianceTypeName: string;
+    categoryName: string;
+    powerPattern: string;
+    status: 'ON' | 'OFF';
+    confidence: number;
+    detectedPower: number;
+    detectedFrequency: number;
+    detectedThd: number;
+    powerShare: number;
+    detectionDetailId?: number;
+    rank: number;
+    scoreBreakdown?: unknown;
+  },
+>(appliances: T[], devicePorts: Awaited<ReturnType<typeof getDevicePortsByRoomId>>) {
+  const usedPortIds = new Set<number>();
+
+  return appliances.map((appliance) => {
+    const matchingPort =
+      devicePorts.find(
+        (port) =>
+          port.applianceTypeId === appliance.applianceTypeId
+          && !usedPortIds.has(port.devicePortId),
+      ) ?? null;
+
+    if (matchingPort) {
+      usedPortIds.add(matchingPort.devicePortId);
+    }
+
+    return {
+      ...appliance,
+      devicePortId: matchingPort?.devicePortId ?? null,
+      portLabel: matchingPort?.portLabel ?? null,
+      applianceUptimeSeconds: matchingPort?.applianceUptimeSeconds ?? null,
+    };
+  });
+}
+
 export async function getTenantDashboard(user: AuthenticatedUser) {
   const roomIds = await getTenantRoomIds(user.userId);
 
@@ -66,6 +109,9 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
         room.room_name,
         room.room_rate_per_kwh,
         room.room_status,
+        landlord.user_id AS landlord_id,
+        landlord.user_name AS landlord_name,
+        landlord.user_email AS landlord_email,
         device.device_id,
         device.device_name,
         device.device_identifier,
@@ -78,6 +124,7 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
           ELSE 'offline'
         END AS computed_status
       FROM tblrooms room
+      LEFT JOIN tblusers landlord ON landlord.user_id = room.room_landlord_id
       INNER JOIN tbldevices device ON device.device_id = room.room_device_id
       WHERE room.room_tenant_id = ?
       ORDER BY room.room_name
@@ -99,12 +146,24 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
       const latestDetection = await getLatestDetectionByRoomId(room.room_id);
       const recentHistory = await getReadingHistoryByRoomId(room.room_id, 5);
       const devicePorts = await getDevicePortsByRoomId(room.room_id);
+      const activeAppliances = latestDetection
+        ? enrichDetectedAppliancesWithPorts(latestDetection.appliances, devicePorts)
+        : [];
+      const activeDetection = latestDetection
+        ? {
+            ...latestDetection,
+            appliances: activeAppliances,
+          }
+        : null;
 
       return {
         roomId: room.room_id,
         roomName: room.room_name,
         roomStatus: room.room_status,
         roomRatePerKwh: room.room_rate_per_kwh,
+        landlordId: room.landlord_id,
+        landlordName: room.landlord_name,
+        landlordEmail: room.landlord_email,
         deviceId: room.device_id,
         deviceName: room.device_name,
         deviceIdentifier: room.device_identifier,
@@ -112,10 +171,10 @@ export async function getTenantDashboard(user: AuthenticatedUser) {
         currentPowerUsage: latestReading?.powerW ?? null,
         latestEnergyKwh: latestReading?.energyKwh ?? null,
         likelyActiveAppliance:
-          latestDetection?.applianceTypeName ?? latestReading?.likelyActiveAppliance ?? null,
+          activeDetection?.applianceTypeName ?? latestReading?.likelyActiveAppliance ?? null,
         detectionConfidence:
-          latestDetection?.confidence ?? latestReading?.detectionConfidence ?? null,
-        activeAppliances: latestDetection?.appliances ?? [],
+          activeDetection?.confidence ?? latestReading?.detectionConfidence ?? null,
+        activeAppliances,
         devicePorts,
         estimatedElectricityCost: latestReading?.estimatedCost ?? null,
         latestReadingAt: latestReading?.timestamp ?? null,
@@ -212,6 +271,12 @@ export async function getAdminDashboard() {
       const latestReading = await getLatestReadingByRoomId(room.room_id);
       const latestDetection = await getLatestDetectionByRoomId(room.room_id);
       const devicePorts = await getDevicePortsByRoomId(room.room_id);
+      const enrichedDetection = latestDetection
+        ? {
+            ...latestDetection,
+            appliances: enrichDetectedAppliancesWithPorts(latestDetection.appliances, devicePorts),
+          }
+        : null;
 
       return {
         roomId: room.room_id,
@@ -229,7 +294,7 @@ export async function getAdminDashboard() {
             ? deviceUptimeByDeviceId.get(room.device_id) ?? null
             : null,
         latestReading,
-        latestDetection,
+        latestDetection: enrichedDetection,
         devicePorts,
       };
     }),

@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+import {
+  getPhilippinePhoneValidationMessage,
+  isValidPhilippinePhone,
+} from '../../shared/utils/philippine-phone';
+
+const philippinePhoneSchema = z
+  .string()
+  .trim()
+  .refine(isValidPhilippinePhone, getPhilippinePhoneValidationMessage());
+
 export const loginBodySchema = z.object({
   email: z.email('Please enter a valid email address.'),
   password: z.string().min(6, 'Password must be at least 6 characters long.'),
@@ -17,11 +27,12 @@ export const registerTenantBodySchema = z
       .trim()
       .email('Please enter a valid email address.')
       .max(100, 'Email must be at most 100 characters long.'),
-    user_phone: z
+    user_phone: philippinePhoneSchema,
+    landlord_registration_code: z
       .string()
       .trim()
-      .min(7, 'Phone must be at least 7 characters long.')
-      .max(20, 'Phone must be at most 20 characters long.'),
+      .min(4, 'Enter the landlord invite code provided to you.')
+      .max(30, 'Landlord invite code must be at most 30 characters long.'),
     user_password: z
       .string()
       .min(8, 'Password must be at least 8 characters long.'),
@@ -44,11 +55,7 @@ export const forgotPasswordBodySchema = z
       .trim()
       .email('Please enter a valid email address.')
       .max(100, 'Email must be at most 100 characters long.'),
-    user_phone: z
-      .string()
-      .trim()
-      .min(7, 'Phone must be at least 7 characters long.')
-      .max(20, 'Phone must be at most 20 characters long.'),
+    user_phone: philippinePhoneSchema,
     new_password: z
       .string()
       .min(8, 'New password must be at least 8 characters long.'),
@@ -75,12 +82,7 @@ export const updateProfileBodySchema = z.object({
     .trim()
     .email('Please enter a valid email address.')
     .max(100, 'Email must be at most 100 characters long.'),
-  user_phone: z
-    .string()
-    .trim()
-    .max(20, 'Phone must be at most 20 characters long.')
-    .optional()
-    .or(z.literal('')),
+  user_phone: philippinePhoneSchema.optional().or(z.literal('')),
 });
 
 export const changePasswordBodySchema = z

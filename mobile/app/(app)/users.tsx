@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
@@ -7,14 +7,17 @@ import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
 import { Field } from '@/src/components/Field';
 import { FormModal } from '@/src/components/FormModal';
-import { OptionChips } from '@/src/components/OptionChips';
 import { RequireRole } from '@/src/components/RequireRole';
 import { ScreenShell } from '@/src/components/ScreenShell';
+import { SelectField } from '@/src/components/SelectField';
 import { SectionCard } from '@/src/components/SectionCard';
+import { SummaryGrid } from '@/src/components/SummaryGrid';
 import { useAppAlert } from '@/src/context/AlertContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { UsersPayload } from '@/src/types/models';
 import { getErrorMessage, getFieldErrors, isUnauthorized } from '@/src/utils/errors';
+import { formatDisplayLabel, formatStatusLabel } from '@/src/utils/format';
+import { getPhilippinePhoneMessage, isValidPhilippinePhone, normalizePhilippinePhone } from '@/src/utils/phone';
 import { theme } from '@/src/utils/theme';
 
 const initialForm = {
@@ -23,13 +26,21 @@ const initialForm = {
   user_phone: '',
   user_password: '',
   confirm_user_password: '',
+  user_landlord_id: null as number | null,
   role_name: 'tenant',
   status_name: 'active',
 };
 
 type UserFieldErrors = Partial<
   Record<
-    'user_name' | 'user_email' | 'user_phone' | 'user_password' | 'confirm_user_password' | 'role_name' | 'status_name',
+    | 'user_name'
+    | 'user_email'
+    | 'user_phone'
+    | 'user_password'
+    | 'confirm_user_password'
+    | 'user_landlord_id'
+    | 'role_name'
+    | 'status_name',
     string
   >
 >;
@@ -39,6 +50,7 @@ export default function UsersScreen() {
   const { token, logout } = useAuth();
   const [payload, setPayload] = useState<UsersPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -46,14 +58,21 @@ export default function UsersScreen() {
   const [isFormModalVisible, setIsFormModalVisible] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [fieldErrors, setFieldErrors] = useState<UserFieldErrors>({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (options?: { pullToRefresh?: boolean }) => {
     if (!token) {
       return;
     }
 
     try {
-      setLoading(true);
+      if (options?.pullToRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const data = await apiRequest<UsersPayload>('/users', { token });
       setPayload(data);
@@ -66,6 +85,7 @@ export default function UsersScreen() {
       setError(getErrorMessage(loadError, 'Unable to load users.'));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [logout, token]);
 
@@ -99,6 +119,14 @@ export default function UsersScreen() {
       return;
     }
 
+    if (form.user_phone.trim() && !isValidPhilippinePhone(form.user_phone)) {
+      const nextError = getPhilippinePhoneMessage();
+      setError(nextError);
+      setFieldErrors({ user_phone: nextError });
+      showError('Unable to save user', nextError);
+      return;
+    }
+
     if (!editingUserId && form.user_password.trim().length < 8) {
       const nextError = 'A password with at least 8 characters is required for new users.';
       setError(nextError);
@@ -123,6 +151,14 @@ export default function UsersScreen() {
       return;
     }
 
+    if (form.role_name === 'tenant' && form.user_landlord_id === null) {
+      const nextError = 'Select a landlord owner for tenant accounts.';
+      setError(nextError);
+      setFieldErrors({ user_landlord_id: nextError });
+      showError('Unable to save user', nextError);
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -138,7 +174,8 @@ export default function UsersScreen() {
           body: {
             user_name: form.user_name.trim(),
             user_email: form.user_email.trim(),
-            user_phone: form.user_phone.trim(),
+            user_phone: form.user_phone.trim() ? normalizePhilippinePhone(form.user_phone) : '',
+            user_landlord_id: form.role_name === 'tenant' ? form.user_landlord_id : null,
             role_name: form.role_name,
             status_name: form.status_name,
             ...(form.user_password.trim() ? { user_password: form.user_password.trim() } : {}),
@@ -154,8 +191,9 @@ export default function UsersScreen() {
           body: {
             user_name: form.user_name.trim(),
             user_email: form.user_email.trim(),
-            user_phone: form.user_phone.trim(),
+            user_phone: form.user_phone.trim() ? normalizePhilippinePhone(form.user_phone) : '',
             user_password: form.user_password.trim(),
+            user_landlord_id: form.role_name === 'tenant' ? form.user_landlord_id : null,
             role_name: form.role_name,
             status_name: form.status_name,
           },
@@ -189,6 +227,7 @@ export default function UsersScreen() {
       user_phone: user.userPhone || '',
       user_password: '',
       confirm_user_password: '',
+      user_landlord_id: user.landlordOwnerId,
       role_name: user.roleName,
       status_name: user.statusName,
     });
@@ -212,42 +251,184 @@ export default function UsersScreen() {
     setIsFormModalVisible(true);
   }
 
+  const landlordOptions = [
+    { label: 'Select landlord owner', value: 'unassigned' as const },
+    ...(payload?.users
+      .filter((user) => user.roleName === 'landlord')
+      .map((user) => ({
+        label: user.userName,
+        value: user.userId,
+      })) ?? []),
+  ];
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return (payload?.users ?? []).filter((user) => {
+      const matchesSearch =
+        !normalizedSearch
+        || [
+          user.userName,
+          user.userEmail,
+          user.userPhone || '',
+          user.landlordOwnerName || '',
+          user.assignedRooms.join(' '),
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      const matchesRole = roleFilter === 'all' || user.roleName === roleFilter;
+      const matchesStatus = statusFilter === 'all' || user.statusName === statusFilter;
+
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [payload?.users, roleFilter, searchTerm, statusFilter]);
+
+  const summaryItems = useMemo(() => {
+    const users = payload?.users ?? [];
+
+    return [
+      { label: 'Total users', value: String(users.length) },
+      {
+        label: 'Active',
+        value: String(users.filter((user) => user.statusName === 'active').length),
+      },
+      {
+        label: 'Tenants',
+        value: String(users.filter((user) => user.roleName === 'tenant').length),
+      },
+      {
+        label: 'Pending',
+        value: String(users.filter((user) => user.statusName === 'pending_approval').length),
+      },
+    ];
+  }, [payload?.users]);
+
   return (
-    <RequireRole roles={['admin']}>
+    <RequireRole roles={['admin']} permissionKey="users.view">
       <ScreenShell
+        onRefresh={() => void loadUsers({ pullToRefresh: true })}
+        refreshing={refreshing}
         subtitle="Create and update admins or tenants with hashed passwords and role enforcement."
         title="User Management">
         <SectionCard>
-          <Text style={styles.sectionTitle}>User actions</Text>
+          <Text style={styles.sectionTitle}>Overview</Text>
           <Text style={styles.helperText}>
-            Open the form only when you need to create or edit a user account.
+            Start here for a quick count of user accounts before opening the full list.
           </Text>
+          <SummaryGrid items={summaryItems} />
+        </SectionCard>
+
+        <SectionCard>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
+          <Text style={styles.helperText}>
+            Use this when you need to add a new account before reviewing or filtering the current list.
+          </Text>
+          <View style={styles.actionRow}>
+            <Button label="Create user" onPress={openCreateModal} />
+          </View>
           {error && !isFormModalVisible ? <Text style={styles.errorText}>{error}</Text> : null}
           {message ? <Text style={styles.successText}>{message}</Text> : null}
-          <Button label="Create user" onPress={openCreateModal} />
+        </SectionCard>
+
+        <SectionCard>
+          <Text style={styles.sectionTitle}>Find and manage</Text>
+          <Text style={styles.helperText}>
+            Search by name, email, phone, landlord owner, or assigned room to narrow the list before editing.
+          </Text>
+          <Field
+            autoCapitalize="words"
+            label="Search users"
+            onChangeText={setSearchTerm}
+            placeholder="Search name, email, landlord owner, or room"
+            value={searchTerm}
+          />
+          <View style={styles.filterRow}>
+            <View style={styles.filterItem}>
+              <SelectField
+                label="Role filter"
+                options={[
+                  { label: 'All roles', value: 'all' as const },
+                  ...((payload?.roles || ['admin', 'tenant']).map((role) => ({
+                    label: formatDisplayLabel(role || ''),
+                    value: role || 'tenant',
+                  }))),
+                ]}
+                selectedValue={roleFilter}
+                onSelect={(value) => setRoleFilter(value)}
+              />
+            </View>
+            <View style={styles.filterItem}>
+              <SelectField
+                label="Status filter"
+                options={[
+                  { label: 'All statuses', value: 'all' as const },
+                  ...((payload?.statuses || ['active', 'inactive', 'suspended', 'pending_approval', 'rejected']).map((status) => ({
+                    label: formatStatusLabel(status || ''),
+                    value: status || 'active',
+                  }))),
+                ]}
+                selectedValue={statusFilter}
+                onSelect={(value) => setStatusFilter(value)}
+              />
+            </View>
+          </View>
         </SectionCard>
 
         <SectionCard>
           <Text style={styles.sectionTitle}>Registered users</Text>
+          {!loading ? (
+            <Text style={styles.helperText}>
+              Showing {filteredUsers.length} of {payload?.users.length ?? 0} users.
+            </Text>
+          ) : null}
           {loading ? (
             <ActivityIndicator color={theme.colors.primary} />
-          ) : payload?.users.length ? (
-            payload.users.map((user) => (
-              <View key={user.userId} style={styles.listItem}>
-                <Text style={styles.itemTitle}>{user.userName}</Text>
-                <Text style={styles.helperText}>
-                  {user.userEmail} · {user.roleName} · {user.statusName}
-                </Text>
+          ) : filteredUsers.length ? (
+            filteredUsers.map((user, index) => (
+              <View
+                key={user.userId}
+                style={[styles.listCard, index === 0 ? styles.listCardFirst : null]}>
+                <View style={styles.listHeader}>
+                  <Text style={styles.itemTitle}>{user.userName}</Text>
+                  <View style={styles.badgeRow}>
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{formatDisplayLabel(user.roleName)}</Text>
+                    </View>
+                    <View style={[styles.badge, styles.badgeMuted]}>
+                      <Text style={styles.badgeText}>{formatStatusLabel(user.statusName)}</Text>
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.helperText}>{user.userEmail}</Text>
+                <Text style={styles.helperText}>{user.userPhone || 'No phone number saved'}</Text>
+                {user.roleName === 'landlord' ? (
+                  <Text style={styles.helperText}>
+                    Invite code: {user.landlordRegistrationCode ?? 'No invite code assigned yet'}
+                  </Text>
+                ) : null}
+                {user.roleName === 'tenant' ? (
+                  <Text style={styles.helperText}>
+                    Landlord owner: {user.landlordOwnerName ?? 'Unassigned'}
+                  </Text>
+                ) : null}
                 <Text style={styles.helperText}>
                   Assigned rooms: {user.assignedRooms.length ? user.assignedRooms.join(', ') : 'None'}
                 </Text>
-                <Button label="Edit user" onPress={() => startEdit(user)} variant="ghost" />
+                <View style={styles.actionRow}>
+                  <Button label="Edit user" onPress={() => startEdit(user)} variant="ghost" />
+                </View>
               </View>
             ))
           ) : (
             <EmptyState
-              description="Create your first tenant or admin account to continue the setup."
-              title="No users yet"
+              description={
+                payload?.users.length
+                  ? 'Try a different search or filter to find the account you need.'
+                  : 'Create your first tenant, landlord, or admin account to continue the setup.'
+              }
+              title={payload?.users.length ? 'No matching users' : 'No users yet'}
             />
           )}
         </SectionCard>
@@ -314,26 +495,48 @@ export default function UsersScreen() {
             textContentType="newPassword"
             value={form.confirm_user_password}
           />
-          <Text style={styles.label}>Role</Text>
-          <OptionChips
-            onSelect={(value) => setForm((current) => ({ ...current, role_name: value }))}
+          <SelectField
+            error={fieldErrors.role_name}
+            label="Role"
             options={(payload?.roles || ['admin', 'tenant']).map((role) => ({
-              label: role || '',
+              label: formatDisplayLabel(role || ''),
               value: role || 'tenant',
             }))}
             selectedValue={form.role_name}
+            onSelect={(value) =>
+              setForm((current) => ({
+                ...current,
+                role_name: value,
+                user_landlord_id: value === 'tenant' ? current.user_landlord_id : null,
+              }))
+            }
           />
-          {fieldErrors.role_name ? <Text style={styles.errorText}>{fieldErrors.role_name}</Text> : null}
-          <Text style={styles.label}>Status</Text>
-          <OptionChips
-            onSelect={(value) => setForm((current) => ({ ...current, status_name: value }))}
-            options={(payload?.statuses || ['active', 'inactive']).map((status) => ({
-              label: status || '',
+          {form.role_name === 'tenant' ? (
+            <>
+              <SelectField
+                error={fieldErrors.user_landlord_id}
+                label="Landlord owner"
+                options={landlordOptions}
+                selectedValue={form.user_landlord_id ?? 'unassigned'}
+                onSelect={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    user_landlord_id: value === 'unassigned' ? null : Number(value),
+                  }))
+                }
+              />
+            </>
+          ) : null}
+          <SelectField
+            error={fieldErrors.status_name}
+            label="Status"
+            options={(payload?.statuses || ['active', 'inactive', 'suspended', 'pending_approval', 'rejected']).map((status) => ({
+              label: formatStatusLabel(status || ''),
               value: status || 'active',
             }))}
             selectedValue={form.status_name}
+            onSelect={(value) => setForm((current) => ({ ...current, status_name: value }))}
           />
-          {fieldErrors.status_name ? <Text style={styles.errorText}>{fieldErrors.status_name}</Text> : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <View style={styles.buttonRow}>
             <Button
@@ -372,11 +575,57 @@ const styles = StyleSheet.create({
     color: theme.colors.success,
     fontWeight: '600',
   },
-  listItem: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.line,
-    paddingTop: 14,
-    gap: 6,
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  filterItem: {
+    flex: 1,
+    minWidth: 160,
+  },
+  listCard: {
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.overlayStrong,
+    backgroundColor: theme.colors.surfaceMuted,
+    padding: 14,
+    gap: 8,
+  },
+  listCardFirst: {
+    borderWidth: 1,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  badge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: 'rgba(79,163,181,0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  badgeMuted: {
+    borderColor: theme.colors.overlayStrong,
+    backgroundColor: theme.colors.surface,
+  },
+  badgeText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionRow: {
+    paddingTop: 4,
   },
   itemTitle: {
     color: theme.colors.text,

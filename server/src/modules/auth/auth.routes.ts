@@ -14,7 +14,7 @@ import {
   registerTenantBodySchema,
   updateProfileBodySchema,
 } from './auth.schemas';
-import { authenticate } from '../../shared/middleware/auth';
+import { authenticate, authorizePermission } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
 import { signAccessToken } from '../../shared/utils/jwt';
 
@@ -27,7 +27,7 @@ authRouter.post(
     const user = await registerTenant(req.body);
 
     res.status(201).json({
-      message: 'Tenant account created successfully.',
+      message: 'Tenant account created and sent for landlord approval.',
       data: user,
     });
   },
@@ -68,6 +68,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
 authRouter.patch(
   '/me',
   authenticate,
+  authorizePermission('profile.manage'),
   validate({ body: updateProfileBodySchema }),
   async (req, res) => {
     const user = await updateAuthenticatedUserProfile(req.user!.userId, req.body);
@@ -82,6 +83,7 @@ authRouter.patch(
 authRouter.patch(
   '/change-password',
   authenticate,
+  authorizePermission('profile.manage'),
   validate({ body: changePasswordBodySchema }),
   async (req, res) => {
     const user = await changeAuthenticatedUserPassword(
