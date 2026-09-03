@@ -44,6 +44,7 @@ import { hasModuleAccess } from '@/src/utils/access';
 import { theme } from '@/src/utils/theme';
 
 const DASHBOARD_REALTIME_INTERVAL_MS = 2000;
+const DASHBOARD_SCROLL_REFRESH_PAUSE_MS = 1200;
 
 const MONTHLY_DAYS = 30;
 const FALLBACK_DAILY_USAGE_HOURS = 8;
@@ -190,6 +191,9 @@ export default function DashboardScreen() {
   const router = useRouter();
   const contentScrollRef = useRef<ScrollView | null>(null);
   const scrollYRef = useRef(0);
+  const lastScrollInteractionAtRef = useRef(0);
+  const pendingSilentRefreshRef = useRef(false);
+  const scrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const params = useLocalSearchParams<{
     roomId?: string | string[];
     focus?: string | string[];
@@ -244,6 +248,16 @@ export default function DashboardScreen() {
     pullToRefresh?: boolean;
     preserveScroll?: boolean;
   }) => {
+    const now = Date.now();
+
+    if (
+      options?.silent
+      && now - lastScrollInteractionAtRef.current < DASHBOARD_SCROLL_REFRESH_PAUSE_MS
+    ) {
+      pendingSilentRefreshRef.current = true;
+      return;
+    }
+
     if (!token || !user || requestInFlightRef.current) {
       return;
     }
@@ -328,6 +342,10 @@ export default function DashboardScreen() {
 
       return () => {
         clearInterval(intervalId);
+        if (scrollIdleTimeoutRef.current) {
+          clearTimeout(scrollIdleTimeoutRef.current);
+          scrollIdleTimeoutRef.current = null;
+        }
       };
     }, [loadDashboard]),
   );
@@ -408,6 +426,20 @@ export default function DashboardScreen() {
         contentScrollRef={contentScrollRef}
         onContentScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
           scrollYRef.current = event.nativeEvent.contentOffset.y;
+          lastScrollInteractionAtRef.current = Date.now();
+
+          if (scrollIdleTimeoutRef.current) {
+            clearTimeout(scrollIdleTimeoutRef.current);
+          }
+
+          scrollIdleTimeoutRef.current = setTimeout(() => {
+            if (!pendingSilentRefreshRef.current) {
+              return;
+            }
+
+            pendingSilentRefreshRef.current = false;
+            void loadDashboard({ silent: true, preserveScroll: true });
+          }, DASHBOARD_SCROLL_REFRESH_PAUSE_MS);
         }}
         onRefresh={() => void loadDashboard({ pullToRefresh: true })}
         refreshing={refreshing}
@@ -600,7 +632,13 @@ function AdminDashboardView({ data }: { data: AdminDashboardData }) {
                     <Text style={styles.applianceGroupTitle}>Highest consuming room</Text>
                     <Text style={styles.heroMetric}>{data.highestConsumingRoom.roomName}</Text>
                     <Text style={styles.helperText}>
-                      {data.highestConsumingRoom.tenantName ?? 'Unassigned tenant'}
+                      Landlord: {data.highestConsumingRoom.landlordName ?? 'Unassigned landlord'}
+                    </Text>
+                    <Text style={styles.helperText}>
+                      Tenant: {data.highestConsumingRoom.tenantName ?? 'Unassigned tenant'}
+                    </Text>
+                    <Text style={styles.helperText}>
+                      Device: {highestConsumingRoomSummary?.deviceIdentifier ?? 'Unassigned device'}
                     </Text>
                     <Text style={styles.inlineStat}>
                       Power: {formatNumber(data.highestConsumingRoom.currentPowerUsage, 'W')}
@@ -649,8 +687,13 @@ function AdminDashboardView({ data }: { data: AdminDashboardData }) {
                     style={[styles.listItem, index === 0 ? styles.listItemFirst : null]}>
                     <Text style={styles.itemTitle}>{room.roomName}</Text>
                     <Text style={styles.helperText}>
-                      {room.tenantName ?? 'Unassigned tenant'} -{' '}
-                      {room.deviceIdentifier ?? 'Unassigned device'}
+                      Landlord: {room.landlordName ?? 'Unassigned landlord'}
+                    </Text>
+                    <Text style={styles.helperText}>
+                      Tenant: {room.tenantName ?? 'Unassigned tenant'}
+                    </Text>
+                    <Text style={styles.helperText}>
+                      Device: {room.deviceIdentifier ?? 'Unassigned device'}
                     </Text>
                     <Text style={styles.inlineStat}>
                       {formatNumber(room.latestReading?.powerW, 'W')} -{' '}
@@ -695,8 +738,13 @@ function AdminDashboardView({ data }: { data: AdminDashboardData }) {
                   style={[styles.listItem, index === 0 ? styles.listItemFirst : null]}>
                   <Text style={styles.itemTitle}>{room.roomName}</Text>
                   <Text style={styles.helperText}>
-                    {room.tenantName ?? 'Unassigned tenant'} -{' '}
-                    {room.deviceIdentifier ?? 'Unassigned device'}
+                    Landlord: {room.landlordName ?? 'Unassigned landlord'}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Tenant: {room.tenantName ?? 'Unassigned tenant'}
+                  </Text>
+                  <Text style={styles.helperText}>
+                    Device: {room.deviceIdentifier ?? 'Unassigned device'}
                   </Text>
                   <View style={styles.summaryGrid}>
                     <SummaryStat

@@ -512,7 +512,7 @@ async function getReadingSnapshotById(roomId: number, readingId: number | null) 
         reading_detail_power_w: number;
         reading_detail_frequency: number;
         reading_detail_power_factor: number;
-        reading_detail_thd_percentage: number;
+        reading_detail_thd_percentage: number | null;
         reading_detail_energy_kwh: number;
         room_name: string;
         room_rate_per_kwh: number;

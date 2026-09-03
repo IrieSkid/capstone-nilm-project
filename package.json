@@ -2,6 +2,7 @@
   "name": "capstone-nilm-project",
   "private": true,
   "scripts": {
+    "dev": "npm run dev:server",
     "install:mobile": "npm install --prefix mobile",
     "install:server": "npm install --prefix server",
     "install:all": "npm install --prefix server && npm install --prefix mobile",
@@ -13,8 +14,10 @@
     "db:migrate:landlord": "npm run db:migrate:landlord --prefix server",
     "db:migrate:billing": "npm run db:migrate:billing --prefix server",
     "db:migrate:notifications": "npm run db:migrate:notifications --prefix server",
+    "db:migrate:pzem": "npm run db:migrate:pzem --prefix server",
     "db:sync:appliances": "npm run db:sync:appliances --prefix server",
     "typecheck:server": "npm run typecheck --prefix server",
-    "lint:mobile": "npm run lint --prefix mobile"
+    "lint:mobile": "npm run lint --prefix mobile",
+    "check": "npm run typecheck:server && npm run lint:mobile"
   }
 }

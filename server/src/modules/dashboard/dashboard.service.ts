@@ -33,6 +33,8 @@ interface AdminRoomRow extends RowDataPacket {
   room_name: string;
   room_rate_per_kwh: number;
   room_status: 'available' | 'occupied';
+  landlord_id: number | null;
+  landlord_name: string | null;
   tenant_id: number | null;
   tenant_name: string | null;
   tenant_email: string | null;
@@ -60,7 +62,7 @@ function enrichDetectedAppliancesWithPorts<
     confidence: number;
     detectedPower: number;
     detectedFrequency: number;
-    detectedThd: number;
+    detectedThd: number | null;
     powerShare: number;
     detectionDetailId?: number;
     rank: number;
@@ -219,6 +221,8 @@ export async function getAdminDashboard() {
             room.room_name,
             room.room_rate_per_kwh,
             room.room_status,
+            landlord.user_id AS landlord_id,
+            landlord.user_name AS landlord_name,
             tenant.user_id AS tenant_id,
             tenant.user_name AS tenant_name,
             tenant.user_email AS tenant_email,
@@ -226,6 +230,7 @@ export async function getAdminDashboard() {
             device.device_name,
             device.device_identifier
           FROM tblrooms room
+          LEFT JOIN tblusers landlord ON landlord.user_id = room.room_landlord_id
           LEFT JOIN tblusers tenant ON tenant.user_id = room.room_tenant_id
           LEFT JOIN tbldevices device ON device.device_id = room.room_device_id
           ORDER BY room.room_name
@@ -283,6 +288,8 @@ export async function getAdminDashboard() {
         roomName: room.room_name,
         roomRatePerKwh: room.room_rate_per_kwh,
         roomStatus: room.room_status,
+        landlordId: room.landlord_id,
+        landlordName: room.landlord_name,
         tenantId: room.tenant_id,
         tenantName: room.tenant_name,
         tenantEmail: room.tenant_email,
@@ -318,6 +325,7 @@ export async function getAdminDashboard() {
       ? {
           roomId: highestConsumingRoom.roomId,
           roomName: highestConsumingRoom.roomName,
+          landlordName: highestConsumingRoom.landlordName,
           tenantName: highestConsumingRoom.tenantName,
           currentPowerUsage: highestConsumingRoom.latestReading?.powerW ?? null,
           estimatedCost: highestConsumingRoom.latestReading?.estimatedCost ?? null,

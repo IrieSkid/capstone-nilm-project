@@ -25,7 +25,7 @@ interface ReadingRow extends RowDataPacket {
   reading_detail_power_w: number;
   reading_detail_frequency: number;
   reading_detail_power_factor: number;
-  reading_detail_thd_percentage: number;
+  reading_detail_thd_percentage: number | null;
   reading_detail_energy_kwh: number;
   room_rate_per_kwh: number;
   appliance_type_name: string | null;
@@ -44,7 +44,7 @@ interface ReadingDetectionRow extends RowDataPacket {
   detection_detail_confidence: number;
   detection_detail_detected_power: number;
   detection_detail_detected_frequency: number;
-  detection_detail_detected_thd: number;
+  detection_detail_detected_thd: number | null;
 }
 
 function mapReadingRow(row: ReadingRow) {
@@ -116,7 +116,7 @@ async function attachReadingDetections(
     confidence: number;
     detectedPower: number;
     detectedFrequency: number;
-    detectedThd: number;
+    detectedThd: number | null;
     powerShare: number;
   }>>();
 
@@ -171,7 +171,7 @@ async function insertReadingDetail(
     power_w: number;
     frequency: number;
     power_factor: number;
-    thd_percentage: number;
+    thd_percentage?: number | null;
     energy_kwh: number;
   },
 ) {
@@ -196,7 +196,7 @@ async function insertReadingDetail(
       input.power_w,
       input.frequency,
       input.power_factor,
-      input.thd_percentage,
+      input.thd_percentage ?? null,
       input.energy_kwh,
     ],
   );
@@ -247,7 +247,7 @@ export async function ingestReading(input: {
   power_w: number;
   frequency: number;
   power_factor: number;
-  thd_percentage: number;
+  thd_percentage?: number | null;
   energy_kwh: number;
 }) {
   const context = await getDeviceRoomContext(input.device_identifier);
@@ -287,7 +287,7 @@ export async function ingestReading(input: {
       powerW: input.power_w,
       powerFactor: input.power_factor,
       frequency: input.frequency,
-      thdPercentage: input.thd_percentage,
+      thdPercentage: input.thd_percentage ?? null,
     });
 
     const estimatedCost = Number((input.energy_kwh * context.room_rate_per_kwh).toFixed(2));
@@ -305,7 +305,7 @@ export async function ingestReading(input: {
         powerW: input.power_w,
         frequency: input.frequency,
         powerFactor: input.power_factor,
-        thdPercentage: input.thd_percentage,
+        thdPercentage: input.thd_percentage ?? null,
         energyKwh: input.energy_kwh,
       },
       detection: detection.appliance,

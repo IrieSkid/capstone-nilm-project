@@ -1,235 +1,163 @@
-# NILM Capstone MVP
+# NILM Capstone Project
 
-Defense-ready MVP for a software-based Non-Intrusive Load Monitoring (NILM) system focused on the minimum vertical slice needed for the `40% system development` checklist.
+Full-stack prototype for collecting residential AC energy measurements from an
+ESP32 and PZEM-004T V3, storing them in MySQL, and presenting monitoring and
+rule-based appliance-estimation results in a React Native application.
 
-## Implemented Scope
+The repository currently contains the earlier landlord/tenant application and
+the working single-PZEM hardware integration. The next planned product direction
+is an engineering monitoring interface with live graphs, experiment labels, and
+technical reports. That larger redesign is intentionally waiting for the final
+multi-PZEM schematic and hardware-team paper.
 
-- JWT login with bcrypt password hashing
-- role-based access control for `admin` and `tenant`
-- session persistence in the mobile app
-- admin CRUD for users, rooms, and devices
-- real MySQL-backed reading ingest flow
-- rule-based NILM appliance detection
-- estimated cost calculation using room rate per kWh
-- tenant dashboard with latest reading, appliance, confidence, cost, and history
-- tenant remote port on/off control backed by MySQL state
-- admin dashboard with totals, latest room summaries, highest consuming room, and device status
-- simulator screen that posts to the same ingest endpoint as external hardware
-- optional feeder server that continuously pushes deterministic multi-appliance readings into the ingest API
-- separate no-login feeder console for plugging, unplugging, and reassigning simulated appliances per room/device
+## Current capabilities
 
-## Project Structure
+- Express and TypeScript REST API backed by MySQL
+- React Native and Expo mobile application
+- JWT authentication and role-based access control
+- User, room, landlord, tenant, and device management
+- Reading ingestion from simulation or physical ESP32 hardware
+- Live and historical readings, device status, billing, and notifications
+- Rule-based appliance estimation using the measurement features available
+- Arduino baseline and Wi-Fi-enabled PZEM firmware
+- Optional deterministic feeder for software-only demonstrations
+
+## Hardware boundary
+
+The PZEM-004T V3 provides AC voltage, current, active power, energy, frequency,
+and power factor. It does not provide THD, harmonic spectra, or raw waveform
+samples. The API therefore accepts a missing `thd_percentage`, and the detector
+renormalizes its score across the available measurements.
+
+The committed firmware currently supports one PZEM. A multi-PZEM version should
+not be implemented until the PZEM addresses, serial topology, CT placement, and
+aggregate-versus-branch channel roles are confirmed.
+
+## Repository structure
 
 ```text
 capstone-nilm-project/
-├─ server/   # Express + TypeScript + MySQL API
-├─ mobile/   # React Native + Expo + TypeScript app
-├─ docs/     # ERD, architecture, and demo script
-└─ README.md
+|-- server/              Express, TypeScript, and MySQL backend
+|-- mobile/              React Native and Expo application
+|-- firmware/            ESP32 baseline and network Arduino sketches
+|-- docs/                Architecture, papers, hardware evidence, and guides
+|-- database/snapshots/  Historical development database exports
+|-- package.json         Root convenience commands
+`-- README.md
 ```
 
-## Quick Setup
+## Setup
 
-### 1. Install all dependencies
+### 1. Install dependencies
 
 ```bash
 npm run install:all
 ```
 
-### 2. Configure environment files
+### 2. Create local environment files
 
-Copy these templates:
+Copy:
 
-- `server/.env.example` -> `server/.env`
-- `mobile/.env.example` -> `mobile/.env`
+- `server/.env.example` to `server/.env`
+- `mobile/.env.example` to `mobile/.env`
+- `firmware/esp32_pzem_lcd_network/network_config.example.h` to
+  `firmware/esp32_pzem_lcd_network/network_config.h`
 
-Suggested backend values for XAMPP:
+The real environment and firmware configuration files are ignored by Git.
 
-```env
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=nilm_capstone_mvp
-JWT_SECRET=change-this-secret
-```
+For a physical phone or ESP32, replace `localhost` with the development PC's LAN
+IPv4 address. The phone, ESP32, and backend computer must be reachable on the
+same network.
 
-For Expo:
+### 3. Initialize a development database
 
-```env
-EXPO_PUBLIC_API_BASE_URL=http://localhost:4000/api/v1
-```
-
-Use `http://10.0.2.2:4000/api/v1` for Android emulator or your LAN IP for a real phone.
-
-### 3. Reset and seed the database
-
-Make sure MySQL is running, then execute:
+Start MySQL, then run:
 
 ```bash
 npm run db:reset
 ```
 
-This creates the schema and seeds:
+Warning: this command recreates the configured database and inserts simulated
+demo records. Do not run it against a database containing hardware measurements
+that you want to preserve.
 
-- 1 admin
-- 1 landlord
-- 2 tenants
-- 2 rooms
-- 3 devices
-- appliance categories and types
-- sample readings and detections
+For an existing database that predates physical PZEM ingestion, run once:
+
+```bash
+npm run db:migrate:pzem
+```
 
 ### 4. Start the backend
+
+```bash
+npm run dev
+```
+
+Equivalent explicit command:
 
 ```bash
 npm run dev:server
 ```
 
-Backend base URL:
+The default API base URL is `http://localhost:4000/api/v1`.
 
-```text
-http://localhost:4000/api/v1
-```
+### 5. Start the mobile application
 
-### 5. Start the mobile app
+In a second terminal:
 
 ```bash
 npm run dev:mobile
 ```
 
-### 6. Optional: start the readings feeder
-
-This gives you a separate fake data source outside the app and can replace the Simulator screen during the defense.
+### 6. Optional software feeder
 
 ```bash
 npm run dev:feeder
 ```
 
-By default, it autostarts and feeds all room-assigned devices every `2000 ms`.
+The feeder generates simulated readings. Keep it stopped while recording or
+demonstrating real ESP32 data so simulated and physical measurements are not
+mixed.
 
-Default feeder URL:
+## Validation
 
-```text
-http://localhost:4010
-```
-
-Feeder console URL:
-
-```text
-http://localhost:4010/console
-```
-
-The console lets you:
-
-- plug in new appliances to any room-assigned device
-- unplug appliances from feeder device ports
-- reassign a port to a different appliance type
-- toggle feeder port supply on or off without logging into the main app
-
-If you want to restart it manually or override the interval:
+Run the server type check and mobile lint together:
 
 ```bash
-curl -X POST http://localhost:4010/start -H "Content-Type: application/json" -d "{}"
+npm run check
 ```
 
-PowerShell alternative:
+Arduino IDE instructions and the verified pin map are in
+[`firmware/README.md`](firmware/README.md).
 
-```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:4010/start -ContentType "application/json" -Body "{}"
-```
+## Main API routes
 
-Useful feeder endpoints:
-
-- `GET /health`
-- `GET /status`
-- `GET /targets`
-- `POST /start`
-- `POST /tick`
-- `POST /stop`
-
-Example `POST /start` body:
-
-```json
-{
-  "intervalMs": 2000,
-  "deviceIdentifiers": ["DEV-101", "DEV-102"]
-}
-```
-
-## Demo Credentials
-
-- Admin: `admin@nilm.local` / `Admin123!`
-- Tenant: `juan@nilm.local` / `Tenant123!`
-- Tenant: `maria@nilm.local` / `Tenant123!`
-- Landlord: `landlord@nilm.local` / `Landlord123!`
-
-## Key API Endpoints
-
-### Auth
-
-- `POST /auth/login`
-- `GET /auth/me`
-
-### Admin CRUD
-
-- `GET /users`
-- `POST /users`
-- `PATCH /users/:id`
-- `GET /rooms`
-- `POST /rooms`
-- `PATCH /rooms/:id`
-- `GET /devices`
-- `POST /devices`
-- `PATCH /devices/:id`
-
-### Readings and Detections
-
-- `POST /readings/ingest`
-- `GET /readings/latest/:roomId`
-- `GET /readings/history/:roomId`
-- `GET /detections/latest/:roomId`
-
-### Tenant Port Control
-
-- `GET /device-ports/room/:roomId`
-- `PATCH /device-ports/:portId`
-
-### Dashboards
-
-- `GET /dashboard/admin`
-- `GET /dashboard/tenant`
-
-## NILM Rule-Based Detection
-
-The MVP uses weighted scoring against appliance reference profiles:
-
-- power similarity
-- power factor similarity
-- frequency similarity
-- THD similarity
-
-Only matches above the minimum confidence threshold are stored and returned.
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/readings/ingest`
+- `GET /api/v1/readings/latest/:roomId`
+- `GET /api/v1/readings/history/:roomId`
+- `GET /api/v1/detections/latest/:roomId`
+- `GET /api/v1/devices`
+- `GET /api/v1/rooms`
+- `GET /api/v1/dashboard/admin`
+- `GET /api/v1/dashboard/tenant`
 
 ## Documentation
 
-- ERD: [docs/erd.md](docs/erd.md)
-- Architecture: [docs/architecture.md](docs/architecture.md)
-- Feeder: [docs/feeder.md](docs/feeder.md)
-- MacBook setup: [docs/macbook-demo-setup.md](docs/macbook-demo-setup.md)
-- Demo flow: [docs/demo-script.md](docs/demo-script.md)
+- [Architecture](docs/architecture.md)
+- [Entity relationship model](docs/erd.md)
+- [Feeder guide](docs/feeder.md)
+- [MacBook demonstration setup](docs/macbook-demo-setup.md)
+- [Hardware evidence](docs/hardware/README.md)
+- [Papers and requirements](docs/papers/README.md)
+- [Historical database snapshots](database/snapshots/README.md)
 
-## Checklist Coverage
+## Safety and data handling
 
-- Functional login authentication
-- Password hashing with bcrypt
-- JWT-based session management
-- Unauthorized API restriction with `401` and `403`
-- Role-based mobile navigation and route protection
-- Normalized tables with PK/FK relationships
-- Referential integrity in MySQL
-- Backend DTO/schema validation
-- Functional CRUD for users, rooms, and devices
-- Complete input -> processing -> storage -> output NILM flow
-- Real business rules for device uniqueness, room mapping, active users, and cost computation
-- Clean empty states and user-facing error messages
+- Treat PZEM mains wiring as hazardous and have it inspected by a qualified
+  person before unattended operation.
+- Never commit Wi-Fi credentials, JWT secrets, database passwords, or local
+  network configuration.
+- Back up the live database before migrations, resets, or bulk cleanup.
+- Historical SQL snapshots contain demo data and are not the canonical schema.

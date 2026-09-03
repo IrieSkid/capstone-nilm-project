@@ -112,7 +112,7 @@ CREATE TABLE tblreading_details (
   reading_detail_power_w DECIMAL(10, 2) NOT NULL,
   reading_detail_frequency DECIMAL(10, 2) NOT NULL,
   reading_detail_power_factor DECIMAL(5, 2) NOT NULL,
-  reading_detail_thd_percentage DECIMAL(5, 2) NOT NULL,
+  reading_detail_thd_percentage DECIMAL(5, 2) NULL,
   reading_detail_energy_kwh DECIMAL(10, 4) NOT NULL,
   CONSTRAINT fk_reading_details_header FOREIGN KEY (reading_detail_header_id) REFERENCES tblreading_headers(reading_header_id)
 );
@@ -326,7 +326,7 @@ CREATE TABLE tblappliance_detection_details (
   detection_detail_confidence DECIMAL(5, 2) NOT NULL,
   detection_detail_detected_power DECIMAL(10, 2) NOT NULL,
   detection_detail_detected_frequency DECIMAL(10, 2) NOT NULL,
-  detection_detail_detected_thd DECIMAL(5, 2) NOT NULL,
+  detection_detail_detected_thd DECIMAL(5, 2) NULL,
   CONSTRAINT fk_detection_details_header FOREIGN KEY (detection_detail_header_id) REFERENCES tblappliance_detection_headers(detection_header_id),
   CONSTRAINT fk_detection_details_appliance FOREIGN KEY (detection_detail_appliance_type_id) REFERENCES tblappliance_types(appliance_type_id),
   CONSTRAINT uq_detection_detail_header_rank UNIQUE (detection_detail_header_id, detection_detail_rank)

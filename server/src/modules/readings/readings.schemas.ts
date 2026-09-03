@@ -14,6 +14,6 @@ export const ingestReadingBodySchema = z.object({
   power_w: z.coerce.number().nonnegative('Power must be 0 or greater.'),
   frequency: z.coerce.number().min(45).max(65),
   power_factor: z.coerce.number().min(0).max(1),
-  thd_percentage: z.coerce.number().min(0).max(100),
+  thd_percentage: z.coerce.number().min(0).max(100).nullable().optional(),
   energy_kwh: z.coerce.number().nonnegative('Energy kWh must be 0 or greater.'),
 });

@@ -344,7 +344,7 @@ function enrichDetectedAppliancesWithPorts<
     confidence: number;
     detectedPower: number;
     detectedFrequency: number;
-    detectedThd: number;
+    detectedThd: number | null;
     powerShare: number;
     detectionDetailId?: number;
     rank: number;

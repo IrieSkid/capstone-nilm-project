@@ -117,7 +117,7 @@ export interface Reading {
   powerW: number;
   frequency: number;
   powerFactor: number;
-  thdPercentage: number;
+  thdPercentage: number | null;
   energyKwh: number;
   estimatedCost: number;
   likelyActiveAppliance: string | null;
@@ -138,14 +138,14 @@ export interface DetectedAppliance {
   confidence: number;
   detectedPower: number;
   detectedFrequency: number;
-  detectedThd: number;
+  detectedThd: number | null;
   powerShare: number;
   applianceUptimeSeconds?: number | null;
   scoreBreakdown?: {
     powerSimilarity: number;
     powerFactorSimilarity: number;
     frequencySimilarity: number;
-    thdSimilarity: number;
+    thdSimilarity: number | null;
   };
 }
 
@@ -216,6 +216,8 @@ export interface AdminRoomSummary {
   roomName: string;
   roomRatePerKwh: number;
   roomStatus: 'available' | 'occupied';
+  landlordId: number | null;
+  landlordName: string | null;
   tenantId: number | null;
   tenantName: string | null;
   tenantEmail: string | null;
@@ -237,6 +239,7 @@ export interface AdminDashboardData {
   highestConsumingRoom: {
     roomId: number;
     roomName: string;
+    landlordName: string | null;
     tenantName: string | null;
     currentPowerUsage: number | null;
     estimatedCost: number | null;
@@ -695,7 +698,7 @@ export interface IngestPayloadResult {
     powerW: number;
     frequency: number;
     powerFactor: number;
-    thdPercentage: number;
+    thdPercentage: number | null;
     energyKwh: number;
   };
   detection: {
@@ -707,7 +710,7 @@ export interface IngestPayloadResult {
       powerSimilarity: number;
       powerFactorSimilarity: number;
       frequencySimilarity: number;
-      thdSimilarity: number;
+      thdSimilarity: number | null;
     };
     powerPattern: string;
   } | null;

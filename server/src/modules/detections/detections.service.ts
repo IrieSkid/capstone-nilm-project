@@ -33,7 +33,7 @@ interface DetectionDetailRow extends RowDataPacket {
   detection_detail_confidence: number;
   detection_detail_detected_power: number;
   detection_detail_detected_frequency: number;
-  detection_detail_detected_thd: number;
+  detection_detail_detected_thd: number | null;
 }
 
 interface DetectionInput {
@@ -44,14 +44,14 @@ interface DetectionInput {
   powerW: number;
   powerFactor: number;
   frequency: number;
-  thdPercentage: number;
+  thdPercentage: number | null;
 }
 
 interface ScoreBreakdown {
   powerSimilarity: number;
   powerFactorSimilarity: number;
   frequencySimilarity: number;
-  thdSimilarity: number;
+  thdSimilarity: number | null;
 }
 
 interface CombinationCandidate {
@@ -75,7 +75,7 @@ interface DetectedAppliance {
   confidence: number;
   detectedPower: number;
   detectedFrequency: number;
-  detectedThd: number;
+  detectedThd: number | null;
   powerShare: number;
   scoreBreakdown?: ScoreBreakdown;
 }
@@ -184,17 +184,20 @@ function scoreCombination(profiles: ApplianceProfileRow[], input: DetectionInput
       0.12,
     ),
   );
-  const thdSimilarity = similarity(
-    input.thdPercentage,
-    combinedThd,
-    Math.max(combinedThd * 0.45, 3 + profiles.length),
-  );
+  const thdSimilarity = input.thdPercentage === null
+    ? null
+    : similarity(
+        input.thdPercentage,
+        combinedThd,
+        Math.max(combinedThd * 0.45, 3 + profiles.length),
+      );
+  const availableWeight = thdSimilarity === null ? 0.85 : 1;
 
   const confidence = clamp(
-    powerSimilarity * 0.55 +
+    (powerSimilarity * 0.55 +
       powerFactorSimilarity * 0.2 +
       frequencySimilarity * 0.1 +
-      thdSimilarity * 0.15 -
+      (thdSimilarity ?? 0) * 0.15) / availableWeight -
       (profiles.length - 1) * 0.015,
     0,
     0.99,
@@ -211,7 +214,7 @@ function scoreCombination(profiles: ApplianceProfileRow[], input: DetectionInput
       powerSimilarity: round(powerSimilarity),
       powerFactorSimilarity: round(powerFactorSimilarity),
       frequencySimilarity: round(frequencySimilarity),
-      thdSimilarity: round(thdSimilarity),
+      thdSimilarity: thdSimilarity === null ? null : round(thdSimilarity),
     },
   };
 }
@@ -236,17 +239,20 @@ function buildApplianceBreakdown(candidate: CombinationCandidate, input: Detecti
         profile.appliance_type_nominal_frequency_hz,
         Math.max(profile.appliance_type_frequency_tolerance, 0.1),
       );
-      const thdSimilarity = similarity(
-        input.thdPercentage,
-        profile.appliance_type_thd_reference,
-        Math.max(profile.appliance_type_thd_reference * 0.7, 4),
-      );
+      const thdSimilarity = input.thdPercentage === null
+        ? null
+        : similarity(
+            input.thdPercentage,
+            profile.appliance_type_thd_reference,
+            Math.max(profile.appliance_type_thd_reference * 0.7, 4),
+          );
+      const availableWeight = thdSimilarity === null ? 0.9 : 1;
       const confidence = clamp(
-        powerSimilarity * 0.45 +
+        (powerSimilarity * 0.45 +
           powerFactorSimilarity * 0.15 +
           frequencySimilarity * 0.1 +
-          thdSimilarity * 0.1 +
-          candidate.confidence * 0.2,
+          (thdSimilarity ?? 0) * 0.1 +
+          candidate.confidence * 0.2) / availableWeight,
         0,
         0.99,
       );
@@ -260,13 +266,15 @@ function buildApplianceBreakdown(candidate: CombinationCandidate, input: Detecti
         confidence: round(confidence),
         detectedPower: round(detectedPower, 2),
         detectedFrequency: round(input.frequency, 2),
-        detectedThd: round((profile.appliance_type_thd_reference * 0.6) + (input.thdPercentage * 0.4), 2),
+        detectedThd: input.thdPercentage === null
+          ? null
+          : round((profile.appliance_type_thd_reference * 0.6) + (input.thdPercentage * 0.4), 2),
         powerShare: round(powerShare),
         scoreBreakdown: {
           powerSimilarity: round(powerSimilarity),
           powerFactorSimilarity: round(powerFactorSimilarity),
           frequencySimilarity: round(frequencySimilarity),
-          thdSimilarity: round(thdSimilarity),
+          thdSimilarity: thdSimilarity === null ? null : round(thdSimilarity),
         },
         rank: 0,
       };
