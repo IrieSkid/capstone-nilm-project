@@ -4,8 +4,10 @@
   "scripts": {
     "dev": "npm run dev:server",
     "install:mobile": "npm install --prefix mobile",
+    "install:engineering": "npm install --prefix engineering-mobile",
     "install:server": "npm install --prefix server",
-    "install:all": "npm install --prefix server && npm install --prefix mobile",
+    "install:all": "npm install --prefix server && npm install --prefix mobile && npm install --prefix engineering-mobile",
+    "dev:engineering": "npm run start --prefix engineering-mobile",
     "dev:mobile": "npm run start --prefix mobile",
     "dev:server": "npm run dev --prefix server",
     "dev:feeder": "npm run feeder:dev --prefix server",
@@ -17,7 +19,9 @@
     "db:migrate:pzem": "npm run db:migrate:pzem --prefix server",
     "db:sync:appliances": "npm run db:sync:appliances --prefix server",
     "typecheck:server": "npm run typecheck --prefix server",
+    "typecheck:engineering": "npm run typecheck --prefix engineering-mobile",
+    "lint:engineering": "npm run lint --prefix engineering-mobile",
     "lint:mobile": "npm run lint --prefix mobile",
-    "check": "npm run typecheck:server && npm run lint:mobile"
+    "check": "npm run typecheck:server && npm run lint:mobile && npm run lint:engineering && npm run typecheck:engineering"
   }
 }

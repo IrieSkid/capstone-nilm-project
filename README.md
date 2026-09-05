@@ -4,16 +4,15 @@ Full-stack prototype for collecting residential AC energy measurements from an
 ESP32 and PZEM-004T V3, storing them in MySQL, and presenting monitoring and
 rule-based appliance-estimation results in a React Native application.
 
-The repository currently contains the earlier landlord/tenant application and
-the working single-PZEM hardware integration. The next planned product direction
-is an engineering monitoring interface with live graphs, experiment labels, and
-technical reports. That larger redesign is intentionally waiting for the final
-multi-PZEM schematic and hardware-team paper.
+The repository contains the earlier landlord/tenant application, a separate
+engineering monitoring application, and the working single-PZEM hardware
+integration. Multi-channel support remains intentionally deferred until the
+final multi-PZEM schematic is approved.
 
 ## Current capabilities
 
 - Express and TypeScript REST API backed by MySQL
-- React Native and Expo mobile application
+- Separate React Native and Expo applications for the IT and engineering scopes
 - JWT authentication and role-based access control
 - User, room, landlord, tenant, and device management
 - Reading ingestion from simulation or physical ESP32 hardware
@@ -39,6 +38,7 @@ aggregate-versus-branch channel roles are confirmed.
 capstone-nilm-project/
 |-- server/              Express, TypeScript, and MySQL backend
 |-- mobile/              React Native and Expo application
+|-- engineering-mobile/  Monitoring-only engineering Expo application
 |-- firmware/            ESP32 baseline and network Arduino sketches
 |-- docs/                Architecture, papers, hardware evidence, and guides
 |-- database/snapshots/  Historical development database exports
@@ -60,6 +60,7 @@ Copy:
 
 - `server/.env.example` to `server/.env`
 - `mobile/.env.example` to `mobile/.env`
+- `engineering-mobile/.env.example` to `engineering-mobile/.env`
 - `firmware/esp32_pzem_lcd_network/network_config.example.h` to
   `firmware/esp32_pzem_lcd_network/network_config.h`
 
@@ -109,6 +110,12 @@ In a second terminal:
 npm run dev:mobile
 ```
 
+To start the separate engineering monitoring application instead:
+
+```bash
+npm run dev:engineering
+```
+
 ### 6. Optional software feeder
 
 ```bash
@@ -142,10 +149,14 @@ Arduino IDE instructions and the verified pin map are in
 - `GET /api/v1/rooms`
 - `GET /api/v1/dashboard/admin`
 - `GET /api/v1/dashboard/tenant`
+- `GET /api/v1/monitoring/rooms`
+- `GET /api/v1/monitoring/rooms/:roomId/dashboard?range=live|1h|24h|7d|30d`
+- `GET /api/v1/monitoring/rooms/:roomId/report?range=24h|7d|30d`
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Engineering monitoring application](docs/engineering-monitoring-app.md)
 - [Entity relationship model](docs/erd.md)
 - [Feeder guide](docs/feeder.md)
 - [MacBook demonstration setup](docs/macbook-demo-setup.md)

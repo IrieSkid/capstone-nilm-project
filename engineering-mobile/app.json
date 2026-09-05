@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Engineering Load Monitor",
+    "slug": "engineering-load-monitor",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "engineeringmonitor",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "android": {
+      "package": "com.capstonenilm.engineeringmonitor"
+    },
+    "ios": {
+      "bundleIdentifier": "com.capstonenilm.engineeringmonitor"
+    }
+  }
+}

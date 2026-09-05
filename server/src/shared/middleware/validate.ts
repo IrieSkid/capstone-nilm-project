@@ -35,7 +35,7 @@ function createValidationError(error: ZodError, source: keyof RequestSchemas) {
 }
 
 export function validate(schemas: RequestSchemas) {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     try {
       if (schemas.body) {
         const parsedBody = schemas.body.safeParse(req.body);
@@ -64,7 +64,9 @@ export function validate(schemas: RequestSchemas) {
           return next(createValidationError(parsedQuery.error, 'query'));
         }
 
-        req.query = parsedQuery.data as Request['query'];
+        // Express 5 exposes `req.query` as a getter. Keep Zod's parsed/defaulted
+        // value in response locals for route handlers instead of assigning it.
+        res.locals.validatedQuery = parsedQuery.data;
       }
 
       next();

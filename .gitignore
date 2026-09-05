@@ -38,6 +38,7 @@ coverage/
 .env*.local
 server/.env
 mobile/.env
+engineering-mobile/.env
 
 # typescript
 *.tsbuildinfo
