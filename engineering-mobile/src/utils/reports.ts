@@ -31,6 +31,18 @@ function buildCsv(report: MonitoringReport) {
     ['Projection status', report.monthlyProjection.status],
     ['Projected monthly energy kWh', report.monthlyProjection.projectedMonthlyEnergyKwh],
     ['Projected monthly cost PHP', report.monthlyProjection.projectedMonthlyCost],
+    ['Hardware health', report.hardwareHealth.status],
+    ['Hardware health message', report.hardwareHealth.message],
+    ['Last server contact', report.hardwareHealth.lastSeenAt],
+    ['Heartbeat telemetry supported', report.hardwareHealth.heartbeatSupported],
+    ['PZEM status', report.hardwareHealth.heartbeat?.pzemOk === undefined ? 'Not reported' : report.hardwareHealth.heartbeat.pzemOk ? 'OK' : 'ERROR'],
+    ['Wi-Fi RSSI dBm', report.hardwareHealth.heartbeat?.wifiRssiDbm],
+    ['Firmware version', report.hardwareHealth.heartbeat?.firmwareVersion ?? 'Legacy'],
+    ['Data coverage percentage', report.hardwareHealth.samplingQuality.coveragePercentage],
+    ['Expected samples', report.hardwareHealth.samplingQuality.expectedSampleCount],
+    ['Received samples', report.hardwareHealth.samplingQuality.sampleCount],
+    ['Estimated missing samples', report.hardwareHealth.samplingQuality.estimatedMissingSamples],
+    ['Longest internal gap seconds', report.hardwareHealth.samplingQuality.longestGapSeconds],
   ];
   const measurementHeader = ['Timestamp', 'Voltage V', 'Current A', 'Real power W', 'Apparent power VA', 'Power factor', 'Frequency Hz', 'Energy kWh'];
   const measurements = report.history.map((reading) => [
@@ -89,6 +101,13 @@ function buildHtml(report: MonitoringReport) {
       <div class="metric"><div class="label">Monthly projection</div><div class="value">${escapeHtml(formatCurrency(report.monthlyProjection.projectedMonthlyCost))}</div></div>
     </div>
     <div class="notice">Projection status: ${escapeHtml(titleCase(report.monthlyProjection.status))}. Cost uses the configured room rate of ${escapeHtml(formatCurrency(report.room.ratePerKwh))} per kWh.</div>
+    <h2>Hardware and data quality</h2>
+    <div class="grid">
+      <div class="metric"><div class="label">Health state</div><div class="value">${escapeHtml(titleCase(report.hardwareHealth.status))}</div></div>
+      <div class="metric"><div class="label">Data coverage</div><div class="value">${escapeHtml(formatNumber(report.hardwareHealth.samplingQuality.coveragePercentage, '%', 1))}</div></div>
+      <div class="metric"><div class="label">Received / expected</div><div class="value">${report.hardwareHealth.samplingQuality.sampleCount} / ${report.hardwareHealth.samplingQuality.expectedSampleCount}</div></div>
+    </div>
+    <div class="notice">${escapeHtml(report.hardwareHealth.message)} Estimated missing samples: ${report.hardwareHealth.samplingQuality.estimatedMissingSamples}. Longest internal gap: ${escapeHtml(formatNumber(report.hardwareHealth.samplingQuality.longestGapSeconds, 'seconds', 1))}.</div>
     <h2>Measurements</h2>
     <table><thead><tr><th>Timestamp</th><th>V</th><th>A</th><th>W</th><th>PF</th><th>kWh</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`;

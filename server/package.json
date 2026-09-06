@@ -12,6 +12,7 @@
     "db:migrate:billing": "tsx src/scripts/migrate-add-billing-module.ts",
     "db:migrate:notifications": "tsx src/scripts/migrate-add-notification-alerts.ts",
     "db:migrate:pzem": "tsx src/scripts/migrate-pzem-readings.ts",
+    "db:migrate:health": "tsx src/scripts/migrate-add-device-health.ts",
     "db:sync:appliances": "tsx src/scripts/sync-appliance-catalog.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "feeder": "tsx src/scripts/readings-feeder.ts",

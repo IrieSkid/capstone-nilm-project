@@ -82,6 +82,22 @@ CREATE TABLE tbldevices (
   CONSTRAINT fk_devices_owner_landlord FOREIGN KEY (device_owner_landlord_id) REFERENCES tblusers(user_id)
 );
 
+CREATE TABLE tbldevice_heartbeats (
+  heartbeat_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  heartbeat_device_id INT NOT NULL,
+  heartbeat_device_time DATETIME NULL,
+  heartbeat_uptime_seconds BIGINT UNSIGNED NOT NULL,
+  heartbeat_wifi_rssi_dbm SMALLINT NULL,
+  heartbeat_pzem_ok TINYINT(1) NOT NULL,
+  heartbeat_last_reading_http_status SMALLINT NULL,
+  heartbeat_firmware_version VARCHAR(30) NOT NULL,
+  heartbeat_error_code VARCHAR(100) NULL,
+  heartbeat_received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_device_heartbeats_device FOREIGN KEY (heartbeat_device_id) REFERENCES tbldevices(device_id),
+  CONSTRAINT uq_device_heartbeats_device UNIQUE (heartbeat_device_id),
+  INDEX idx_device_heartbeats_device_received (heartbeat_device_id, heartbeat_received_at)
+);
+
 CREATE TABLE tblrooms (
   room_id INT PRIMARY KEY AUTO_INCREMENT,
   room_name VARCHAR(100) NOT NULL UNIQUE,

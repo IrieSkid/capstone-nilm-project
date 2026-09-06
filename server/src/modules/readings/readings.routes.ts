@@ -3,8 +3,17 @@ import { Router } from 'express';
 import { authenticate } from '../../shared/middleware/auth';
 import { validate } from '../../shared/middleware/validate';
 import { assertRoomAccess } from '../../shared/utils/room-access';
-import { getReadingHistoryByRoomId, getLatestReadingByRoomId, ingestReading } from './readings.service';
-import { ingestReadingBodySchema, roomIdParamSchema } from './readings.schemas';
+import {
+  getReadingHistoryByRoomId,
+  getLatestReadingByRoomId,
+  ingestDeviceHeartbeat,
+  ingestReading,
+} from './readings.service';
+import {
+  ingestHeartbeatBodySchema,
+  ingestReadingBodySchema,
+  roomIdParamSchema,
+} from './readings.schemas';
 
 export const readingsRouter = Router();
 
@@ -16,6 +25,19 @@ readingsRouter.post('/ingest', validate({ body: ingestReadingBodySchema }), asyn
     data: result,
   });
 });
+
+readingsRouter.post(
+  '/heartbeat',
+  validate({ body: ingestHeartbeatBodySchema }),
+  async (req, res) => {
+    const result = await ingestDeviceHeartbeat(req.body);
+
+    res.status(201).json({
+      message: 'Device heartbeat received.',
+      data: result,
+    });
+  },
+);
 
 readingsRouter.get(
   '/latest/:roomId',

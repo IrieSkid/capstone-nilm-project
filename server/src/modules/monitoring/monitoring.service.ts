@@ -5,6 +5,7 @@ import { env } from '../../config/env';
 import { AuthenticatedUser } from '../../shared/types/auth';
 import { AppError } from '../../shared/utils/app-error';
 import { assertRoomAccess } from '../../shared/utils/room-access';
+import { getDurationSecondsSince } from '../../shared/utils/date';
 import { MonitoringRange } from './monitoring.schemas';
 
 interface MonitoringRoomRow extends RowDataPacket {
@@ -52,6 +53,30 @@ interface EnergyBoundaryRow extends RowDataPacket {
   reading_detail_energy_kwh: number;
 }
 
+interface DeviceHeartbeatRow extends RowDataPacket {
+  heartbeat_device_time: string | null;
+  heartbeat_uptime_seconds: number;
+  heartbeat_wifi_rssi_dbm: number | null;
+  heartbeat_pzem_ok: number;
+  heartbeat_last_reading_http_status: number | null;
+  heartbeat_firmware_version: string;
+  heartbeat_error_code: string | null;
+  heartbeat_received_at: string;
+}
+
+interface ReadingQualityRow extends RowDataPacket {
+  sample_count: number;
+  first_reading_at: string | null;
+  last_reading_at: string | null;
+  observed_span_seconds: number | null;
+}
+
+interface ReadingGapRow extends RowDataPacket {
+  average_interval_seconds: number | null;
+  longest_gap_seconds: number | null;
+  gap_count: number;
+}
+
 const RANGE_CONFIG: Record<MonitoringRange, {
   whereSql: string;
   bucketSeconds: number | null;
@@ -62,6 +87,17 @@ const RANGE_CONFIG: Record<MonitoringRange, {
   '24h': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)', bucketSeconds: 300, limit: 400 },
   '7d': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)', bucketSeconds: 3600, limit: 240 },
   '30d': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)', bucketSeconds: 21600, limit: 160 },
+};
+
+const QUALITY_RANGE_CONFIG: Record<MonitoringRange, {
+  whereSql: string;
+  windowSeconds: number;
+}> = {
+  live: { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)', windowSeconds: 300 },
+  '1h': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)', windowSeconds: 3600 },
+  '24h': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)', windowSeconds: 86_400 },
+  '7d': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)', windowSeconds: 604_800 },
+  '30d': { whereSql: 'AND h.reading_header_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)', windowSeconds: 2_592_000 },
 };
 
 function round(value: number | null | undefined, digits = 2) {
@@ -314,6 +350,159 @@ async function getStatistics(roomId: number, range: MonitoringRange) {
   return rows[0];
 }
 
+async function getLatestHeartbeat(deviceId: number | null) {
+  if (deviceId === null) {
+    return null;
+  }
+
+  const [rows] = await pool.query<DeviceHeartbeatRow[]>(
+    `
+      SELECT
+        heartbeat_device_time,
+        heartbeat_uptime_seconds,
+        heartbeat_wifi_rssi_dbm,
+        heartbeat_pzem_ok,
+        heartbeat_last_reading_http_status,
+        heartbeat_firmware_version,
+        heartbeat_error_code,
+        heartbeat_received_at
+      FROM tbldevice_heartbeats
+      WHERE heartbeat_device_id = ?
+      ORDER BY heartbeat_received_at DESC, heartbeat_id DESC
+      LIMIT 1
+    `,
+    [deviceId],
+  );
+
+  return rows[0] ?? null;
+}
+
+async function getReadingQuality(roomId: number, range: MonitoringRange) {
+  const config = QUALITY_RANGE_CONFIG[range];
+  const expectedIntervalSeconds = env.EXPECTED_READING_INTERVAL_SECONDS;
+  const [qualityRows] = await pool.query<ReadingQualityRow[]>(
+    `
+      SELECT
+        COUNT(*) AS sample_count,
+        MIN(h.reading_header_time) AS first_reading_at,
+        MAX(h.reading_header_time) AS last_reading_at,
+        TIMESTAMPDIFF(
+          SECOND,
+          MIN(h.reading_header_time),
+          MAX(h.reading_header_time)
+        ) AS observed_span_seconds
+      FROM tblreading_headers h
+      WHERE h.reading_header_room_id = ?
+        ${config.whereSql}
+    `,
+    [roomId],
+  );
+  const [gapRows] = await pool.query<ReadingGapRow[]>(
+    `
+      SELECT
+        AVG(intervals.gap_seconds) AS average_interval_seconds,
+        MAX(intervals.gap_seconds) AS longest_gap_seconds,
+        COALESCE(SUM(intervals.gap_seconds > ?), 0) AS gap_count
+      FROM (
+        SELECT TIMESTAMPDIFF(
+          SECOND,
+          LAG(h.reading_header_time) OVER (
+            ORDER BY h.reading_header_time, h.reading_header_id
+          ),
+          h.reading_header_time
+        ) AS gap_seconds
+        FROM tblreading_headers h
+        WHERE h.reading_header_room_id = ?
+          ${config.whereSql}
+      ) intervals
+      WHERE intervals.gap_seconds IS NOT NULL
+    `,
+    [expectedIntervalSeconds * 2, roomId],
+  );
+
+  const quality = qualityRows[0];
+  const gaps = gapRows[0];
+  const sampleCount = quality?.sample_count ?? 0;
+  const expectedSampleCount = Math.floor(config.windowSeconds / expectedIntervalSeconds) + 1;
+
+  return {
+    evaluatedWindowSeconds: config.windowSeconds,
+    expectedIntervalSeconds,
+    sampleCount,
+    expectedSampleCount,
+    estimatedMissingSamples: Math.max(0, expectedSampleCount - sampleCount),
+    coveragePercentage: round(Math.min(100, (sampleCount / expectedSampleCount) * 100), 1),
+    firstReadingAt: quality?.first_reading_at ?? null,
+    lastReadingAt: quality?.last_reading_at ?? null,
+    observedSpanSeconds: quality?.observed_span_seconds ?? null,
+    averageIntervalSeconds: round(gaps?.average_interval_seconds, 1),
+    longestGapSeconds: round(gaps?.longest_gap_seconds, 1),
+    gapCount: Number(gaps?.gap_count ?? 0),
+  };
+}
+
+function buildHardwareHealth(input: {
+  room: Awaited<ReturnType<typeof getMonitoringRoom>>;
+  latest: ReturnType<typeof mapSample> | null;
+  heartbeat: DeviceHeartbeatRow | null;
+  samplingQuality: Awaited<ReturnType<typeof getReadingQuality>>;
+}) {
+  const { room, latest, heartbeat, samplingQuality } = input;
+  const lastReadingAgeSeconds = getDurationSecondsSince(latest?.timestamp);
+  const lastSeenAgeSeconds = getDurationSecondsSince(room.deviceLastSeen);
+  const delayedAfterSeconds = env.EXPECTED_READING_INTERVAL_SECONDS * 3;
+  let status: 'healthy' | 'delayed' | 'pzem_error' | 'upload_error' | 'offline' | 'unassigned';
+  let message: string;
+
+  if (room.deviceId === null) {
+    status = 'unassigned';
+    message = 'No monitoring device is assigned to this room.';
+  } else if (room.deviceStatus === 'offline') {
+    status = 'offline';
+    message = 'No reading or heartbeat has reached the server within the offline threshold.';
+  } else if (heartbeat && !Boolean(heartbeat.heartbeat_pzem_ok)) {
+    status = 'pzem_error';
+    message = 'The ESP32 is reachable, but its latest PZEM measurement attempt failed.';
+  } else if (
+    heartbeat
+    && heartbeat.heartbeat_last_reading_http_status !== null
+    && heartbeat.heartbeat_last_reading_http_status !== 0
+    && heartbeat.heartbeat_last_reading_http_status !== 201
+  ) {
+    status = 'upload_error';
+    message = `The ESP32 reported reading upload status ${heartbeat.heartbeat_last_reading_http_status}.`;
+  } else if (lastReadingAgeSeconds === null || lastReadingAgeSeconds > delayedAfterSeconds) {
+    status = 'delayed';
+    message = 'The ESP32 is reachable, but measurement delivery is later than expected.';
+  } else {
+    status = 'healthy';
+    message = 'Device connectivity and measurement delivery are within the expected interval.';
+  }
+
+  return {
+    status,
+    message,
+    heartbeatSupported: heartbeat !== null,
+    offlineAfterSeconds: env.MONITORING_OFFLINE_SECONDS,
+    delayedAfterSeconds,
+    lastSeenAt: room.deviceLastSeen,
+    lastSeenAgeSeconds,
+    lastReadingAt: latest?.timestamp ?? null,
+    lastReadingAgeSeconds,
+    heartbeat: heartbeat ? {
+      receivedAt: heartbeat.heartbeat_received_at,
+      deviceTime: heartbeat.heartbeat_device_time,
+      uptimeSeconds: heartbeat.heartbeat_uptime_seconds,
+      wifiRssiDbm: heartbeat.heartbeat_wifi_rssi_dbm,
+      pzemOk: Boolean(heartbeat.heartbeat_pzem_ok),
+      lastReadingHttpStatus: heartbeat.heartbeat_last_reading_http_status,
+      firmwareVersion: heartbeat.heartbeat_firmware_version,
+      errorCode: heartbeat.heartbeat_error_code,
+    } : null,
+    samplingQuality,
+  };
+}
+
 async function getEnergyBoundaries(roomId: number, whereSql: string) {
   const baseSql = `
     SELECT
@@ -410,14 +599,17 @@ export async function getMonitoringDashboard(
   range: MonitoringRange,
 ) {
   const room = await getMonitoringRoom(user, roomId);
-  const [latest, history, statistics, boundaries, projection] = await Promise.all([
+  const [latest, history, statistics, boundaries, projection, heartbeat, samplingQuality] = await Promise.all([
     getLatestSample(roomId),
     getHistory(roomId, range),
     getStatistics(roomId, range),
     getEnergyBoundaries(roomId, RANGE_CONFIG[range].whereSql),
     getMonthlyProjection(roomId, room.ratePerKwh),
+    getLatestHeartbeat(room.deviceId),
+    getReadingQuality(roomId, range),
   ]);
   const energy = calculateEnergyDelta(boundaries);
+  const hardwareHealth = buildHardwareHealth({ room, latest, heartbeat, samplingQuality });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -444,6 +636,7 @@ export async function getMonitoringDashboard(
       counterResetDetected: energy.counterResetDetected,
     },
     monthlyProjection: projection,
+    hardwareHealth,
     history,
   };
 }

@@ -18,8 +18,10 @@ constexpr uint8_t LCD_ROWS = 2;
 constexpr unsigned long SENSOR_INTERVAL_MS = 1000;
 constexpr unsigned long DISPLAY_INTERVAL_MS = 3000;
 constexpr unsigned long UPLOAD_INTERVAL_MS = 3000;
+constexpr unsigned long HEARTBEAT_INTERVAL_MS = 5000;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 constexpr uint16_t HTTP_TIMEOUT_MS = 5000;
+constexpr char FIRMWARE_VERSION[] = "1.1.0";
 
 PZEM004Tv30 pzem(Serial2, PZEM_RX_PIN, PZEM_TX_PIN);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);
@@ -38,9 +40,11 @@ Measurement latestMeasurement;
 unsigned long previousSensorMillis = 0;
 unsigned long previousDisplayMillis = 0;
 unsigned long previousUploadMillis = 0;
+unsigned long previousHeartbeatMillis = 0;
 unsigned long previousWifiAttemptMillis = 0;
 uint8_t screenState = 0;
-int lastHttpStatus = 0;
+int lastReadingHttpStatus = 0;
+int lastHeartbeatHttpStatus = 0;
 
 void writeLcdLine(uint8_t row, const String& text) {
   String output = text.substring(0, LCD_COLUMNS);
@@ -145,10 +149,10 @@ void updateDisplay() {
       writeLcdLine(1, "Set WiFi config");
     } else if (WiFi.status() != WL_CONNECTED) {
       writeLcdLine(1, "WiFi connecting");
-    } else if (lastHttpStatus == 201) {
+    } else if (lastReadingHttpStatus == 201) {
       writeLcdLine(1, "API upload: OK");
-    } else if (lastHttpStatus != 0) {
-      writeLcdLine(1, "API error: " + String(lastHttpStatus));
+    } else if (lastReadingHttpStatus != 0) {
+      writeLcdLine(1, "API error: " + String(lastReadingHttpStatus));
     } else {
       writeLcdLine(1, "WiFi connected");
     }
@@ -191,17 +195,80 @@ bool uploadMeasurement(const Measurement& measurement) {
   http.begin(INGEST_URL);
   http.addHeader("Content-Type", "application/json");
 
-  lastHttpStatus = http.POST(payload);
-  const String response = lastHttpStatus > 0 ? http.getString() : http.errorToString(lastHttpStatus);
+  lastReadingHttpStatus = http.POST(payload);
+  const String response = lastReadingHttpStatus > 0
+    ? http.getString()
+    : http.errorToString(lastReadingHttpStatus);
   http.end();
 
   Serial.print("POST ");
   Serial.print(INGEST_URL);
   Serial.print(" -> ");
-  Serial.println(lastHttpStatus);
+  Serial.println(lastReadingHttpStatus);
   Serial.println(response);
 
-  return lastHttpStatus == 201;
+  return lastReadingHttpStatus == 201;
+}
+
+bool uploadHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  String heartbeatUrl = String(INGEST_URL);
+  const int finalSlash = heartbeatUrl.lastIndexOf('/');
+  if (finalSlash < 0) {
+    return false;
+  }
+  heartbeatUrl = heartbeatUrl.substring(0, finalSlash + 1) + "heartbeat";
+
+  char timestamp[25];
+  const bool hasTimestamp = createUtcTimestamp(timestamp, sizeof(timestamp));
+  String payload;
+  payload.reserve(320);
+  payload += "{\"device_identifier\":\"";
+  payload += DEVICE_IDENTIFIER;
+  payload += "\",\"timestamp\":";
+  if (hasTimestamp) {
+    payload += "\"";
+    payload += timestamp;
+    payload += "\"";
+  } else {
+    payload += "null";
+  }
+  payload += ",\"uptime_seconds\":";
+  payload += String(millis() / 1000UL);
+  payload += ",\"wifi_rssi_dbm\":";
+  payload += String(WiFi.RSSI());
+  payload += ",\"pzem_ok\":";
+  payload += latestMeasurement.valid ? "true" : "false";
+  payload += ",\"last_reading_http_status\":";
+  payload += String(lastReadingHttpStatus);
+  payload += ",\"firmware_version\":\"";
+  payload += FIRMWARE_VERSION;
+  payload += "\",\"error_code\":";
+  payload += latestMeasurement.valid ? "null" : "\"pzem_read_failed\"";
+  payload += "}";
+
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.begin(heartbeatUrl);
+  http.addHeader("Content-Type", "application/json");
+  lastHeartbeatHttpStatus = http.POST(payload);
+  const String response = lastHeartbeatHttpStatus > 0
+    ? http.getString()
+    : http.errorToString(lastHeartbeatHttpStatus);
+  http.end();
+
+  Serial.print("HEARTBEAT ");
+  Serial.print(heartbeatUrl);
+  Serial.print(" -> ");
+  Serial.println(lastHeartbeatHttpStatus);
+  if (lastHeartbeatHttpStatus != 201) {
+    Serial.println(response);
+  }
+
+  return lastHeartbeatHttpStatus == 201;
 }
 
 void setup() {
@@ -248,6 +315,11 @@ void loop() {
   if (currentMillis - previousUploadMillis >= UPLOAD_INTERVAL_MS) {
     previousUploadMillis = currentMillis;
     uploadMeasurement(latestMeasurement);
+  }
+
+  if (currentMillis - previousHeartbeatMillis >= HEARTBEAT_INTERVAL_MS) {
+    previousHeartbeatMillis = currentMillis;
+    uploadHeartbeat();
   }
 
   delay(20);

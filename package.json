@@ -17,6 +17,7 @@
     "db:migrate:billing": "npm run db:migrate:billing --prefix server",
     "db:migrate:notifications": "npm run db:migrate:notifications --prefix server",
     "db:migrate:pzem": "npm run db:migrate:pzem --prefix server",
+    "db:migrate:health": "npm run db:migrate:health --prefix server",
     "db:sync:appliances": "npm run db:sync:appliances --prefix server",
     "typecheck:server": "npm run typecheck --prefix server",
     "typecheck:engineering": "npm run typecheck --prefix engineering-mobile",

@@ -37,6 +37,14 @@ export function formatHours(value: number | null | undefined) {
   return `${(value / 24).toFixed(1)} d`;
 }
 
+export function formatDurationSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined) return 'N/A';
+  if (value < 60) return `${Math.round(value)} s`;
+  if (value < 3600) return `${Math.floor(value / 60)}m ${Math.round(value % 60)}s`;
+  if (value < 86_400) return `${Math.floor(value / 3600)}h ${Math.floor((value % 3600) / 60)}m`;
+  return `${Math.floor(value / 86_400)}d ${Math.floor((value % 86_400) / 3600)}h`;
+}
+
 export function titleCase(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 }

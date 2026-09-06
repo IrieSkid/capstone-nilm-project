@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { apiRequest, getErrorMessage } from '@/api/client';
 import { Button } from '@/components/Button';
+import { HardwareHealthPanel } from '@/components/HardwareHealthPanel';
 import { LineChart } from '@/components/LineChart';
 import { MetricCard } from '@/components/MetricCard';
 import { RangeSelector } from '@/components/RangeSelector';
@@ -114,6 +115,8 @@ export default function MonitorScreen() {
 
         {dashboard ? (
           <>
+            <HardwareHealthPanel health={dashboard.hardwareHealth} />
+
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionTitle}>{deviceOnline ? 'Latest measurement' : 'Last stored measurement'}</Text>
               <Text style={styles.sectionMeta}>{formatDateTime(dashboard.latest?.timestamp)}</Text>

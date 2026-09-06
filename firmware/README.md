@@ -5,7 +5,8 @@ This folder contains two Arduino sketches for the current ESP32 + PZEM-004T V3.0
 ## Sketches
 
 - `esp32_pzem_lcd_baseline`: cleaned copy of the hardware team's working local display firmware. Keep this as the recovery baseline.
-- `esp32_pzem_lcd_network`: retains the display and adds Wi-Fi, NTP time, frequency readings, and HTTP ingestion into the NILM server.
+- `esp32_pzem_lcd_network`: retains the display and adds Wi-Fi, NTP time,
+  frequency readings, HTTP ingestion, and a 5-second device-health heartbeat.
 
 ## Pin map
 
@@ -42,6 +43,12 @@ Use the PC's Wi-Fi IPv4 address in `INGEST_URL`; `localhost` would refer to the 
 `network_config.h` is ignored by Git so a real Wi-Fi password is not committed. `network_config.example.h` is the safe template to copy when setting up another computer.
 
 The network sketch deliberately omits THD because the PZEM-004T does not measure it. For an existing database, run `npm run db:migrate:pzem` from the `server` folder once before ingesting hardware readings. Fresh databases created from `server/sql/schema.sql` already allow missing THD.
+
+Firmware v1.1.0 derives the heartbeat URL from `INGEST_URL` and reports ESP32
+uptime, Wi-Fi RSSI, PZEM status, the last reading-upload response, and firmware
+version. No additional value is required in `network_config.h`. Before uploading
+v1.1.0, run `npm run db:migrate:health` from the repository root and restart the
+backend.
 
 ## Verify and upload
 

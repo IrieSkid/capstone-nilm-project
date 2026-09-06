@@ -239,6 +239,99 @@ async function getDeviceRoomContext(deviceIdentifier: string) {
   };
 }
 
+async function getRegisteredDevice(deviceIdentifier: string) {
+  const [rows] = await pool.query<DeviceRoomRow[]>(
+    `
+      SELECT
+        d.device_id,
+        d.device_name,
+        d.device_identifier,
+        d.device_status,
+        room.room_id,
+        room.room_name,
+        room.room_rate_per_kwh
+      FROM tbldevices d
+      LEFT JOIN tblrooms room ON room.room_device_id = d.device_id
+      WHERE d.device_identifier = ?
+      LIMIT 1
+    `,
+    [deviceIdentifier],
+  );
+
+  if (!rows[0]) {
+    throw new AppError(404, 'Heartbeat only accepts registered devices.');
+  }
+
+  return rows[0];
+}
+
+export async function ingestDeviceHeartbeat(input: {
+  device_identifier: string;
+  timestamp?: string | null;
+  uptime_seconds: number;
+  wifi_rssi_dbm?: number | null;
+  pzem_ok: boolean;
+  last_reading_http_status?: number | null;
+  firmware_version: string;
+  error_code?: string | null;
+}) {
+  const device = await getRegisteredDevice(input.device_identifier);
+  const deviceTimestamp = input.timestamp ? toMySqlDateTime(input.timestamp) : null;
+
+  return withTransaction(async (connection) => {
+    await connection.query(
+      `
+        UPDATE tbldevices
+        SET device_status = 'online', device_last_seen = NOW()
+        WHERE device_id = ?
+      `,
+      [device.device_id],
+    );
+
+    const [result] = await connection.query<ResultSetHeader>(
+      `
+        INSERT INTO tbldevice_heartbeats (
+          heartbeat_device_id,
+          heartbeat_device_time,
+          heartbeat_uptime_seconds,
+          heartbeat_wifi_rssi_dbm,
+          heartbeat_pzem_ok,
+          heartbeat_last_reading_http_status,
+          heartbeat_firmware_version,
+          heartbeat_error_code
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          heartbeat_device_time = VALUES(heartbeat_device_time),
+          heartbeat_uptime_seconds = VALUES(heartbeat_uptime_seconds),
+          heartbeat_wifi_rssi_dbm = VALUES(heartbeat_wifi_rssi_dbm),
+          heartbeat_pzem_ok = VALUES(heartbeat_pzem_ok),
+          heartbeat_last_reading_http_status = VALUES(heartbeat_last_reading_http_status),
+          heartbeat_firmware_version = VALUES(heartbeat_firmware_version),
+          heartbeat_error_code = VALUES(heartbeat_error_code),
+          heartbeat_received_at = CURRENT_TIMESTAMP
+      `,
+      [
+        device.device_id,
+        deviceTimestamp,
+        input.uptime_seconds,
+        input.wifi_rssi_dbm ?? null,
+        input.pzem_ok,
+        input.last_reading_http_status ?? null,
+        input.firmware_version,
+        input.error_code ?? null,
+      ],
+    );
+
+    return {
+      heartbeatId: result.insertId,
+      deviceId: device.device_id,
+      deviceIdentifier: device.device_identifier,
+      receivedAt: new Date().toISOString(),
+    };
+  });
+}
+
 export async function ingestReading(input: {
   device_identifier: string;
   timestamp: string;

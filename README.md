@@ -17,6 +17,7 @@ final multi-PZEM schematic is approved.
 - User, room, landlord, tenant, and device management
 - Reading ingestion from simulation or physical ESP32 hardware
 - Live and historical readings, device status, billing, and notifications
+- ESP32 heartbeat telemetry and measurement-completeness diagnostics
 - Rule-based appliance estimation using the measurement features available
 - Arduino baseline and Wi-Fi-enabled PZEM firmware
 - Optional deterministic feeder for software-only demonstrations
@@ -88,6 +89,12 @@ For an existing database that predates physical PZEM ingestion, run once:
 npm run db:migrate:pzem
 ```
 
+For device heartbeat and hardware-health telemetry, also run once:
+
+```bash
+npm run db:migrate:health
+```
+
 ### 4. Start the backend
 
 ```bash
@@ -142,6 +149,7 @@ Arduino IDE instructions and the verified pin map are in
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`
 - `POST /api/v1/readings/ingest`
+- `POST /api/v1/readings/heartbeat`
 - `GET /api/v1/readings/latest/:roomId`
 - `GET /api/v1/readings/history/:roomId`
 - `GET /api/v1/detections/latest/:roomId`
