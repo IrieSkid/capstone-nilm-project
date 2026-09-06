@@ -64,6 +64,7 @@ export default function MonitorScreen() {
   const powerValues = useMemo(() => dashboard?.history.map((sample) => sample.powerW) ?? [], [dashboard]);
   const voltageValues = useMemo(() => dashboard?.history.map((sample) => sample.voltage) ?? [], [dashboard]);
   const currentValues = useMemo(() => dashboard?.history.map((sample) => sample.current) ?? [], [dashboard]);
+  const deviceOnline = dashboard?.room.deviceStatus === 'online';
 
   async function createReport(kind: 'csv' | 'pdf') {
     if (!token) return;
@@ -100,24 +101,36 @@ export default function MonitorScreen() {
 
         <RangeSelector options={DASHBOARD_RANGES} value={range} onChange={setRange} />
 
-        {range === 'live' ? <View style={styles.liveRow}><View style={styles.liveDot} /><Text style={styles.liveText}>Auto-refreshing every 3 seconds</Text></View> : null}
+        {range === 'live' ? (
+          <View style={styles.liveRow}>
+            <View style={[styles.liveDot, !deviceOnline && styles.offlineDot]} />
+            <Text style={styles.liveText}>
+              {deviceOnline ? 'Receiving data · refreshing every 3 seconds' : 'Waiting for device · checking every 3 seconds'}
+            </Text>
+          </View>
+        ) : null}
         {error ? <View style={styles.errorBox}><Text style={styles.error}>{error}</Text><Button label="Retry" variant="secondary" onPress={() => void loadDashboard()} /></View> : null}
         {loading && !dashboard ? <ActivityIndicator color={theme.colors.primary} size="large" style={styles.loader} /> : null}
 
         {dashboard ? (
           <>
             <View style={styles.sectionHeading}>
-              <Text style={styles.sectionTitle}>Latest measurement</Text>
+              <Text style={styles.sectionTitle}>{deviceOnline ? 'Latest measurement' : 'Last stored measurement'}</Text>
               <Text style={styles.sectionMeta}>{formatDateTime(dashboard.latest?.timestamp)}</Text>
             </View>
+            {!deviceOnline && dashboard.latest ? (
+              <View style={styles.staleNotice}>
+                <Text style={styles.staleNoticeText}>These values came from the final successful upload and are no longer live.</Text>
+              </View>
+            ) : null}
             <View style={styles.metricGrid}>
-              <MetricCard label="Real power" value={formatNumber(dashboard.latest?.powerW, 'W')} accent />
-              <MetricCard label="Voltage" value={formatNumber(dashboard.latest?.voltage, 'V', 1)} />
-              <MetricCard label="Current" value={formatNumber(dashboard.latest?.current, 'A', 3)} />
-              <MetricCard label="Apparent power" value={formatNumber(dashboard.latest?.apparentPowerVa, 'VA')} />
-              <MetricCard label="Power factor" value={formatNumber(dashboard.latest?.powerFactor, undefined, 2)} />
-              <MetricCard label="Frequency" value={formatNumber(dashboard.latest?.frequency, 'Hz', 1)} />
-              <MetricCard label="Meter energy" value={formatNumber(dashboard.latest?.energyKwh, 'kWh', 4)} />
+              <MetricCard label="Real power" value={formatNumber(dashboard.latest?.powerW, 'W')} accent dimmed={!deviceOnline} />
+              <MetricCard label="Voltage" value={formatNumber(dashboard.latest?.voltage, 'V', 1)} dimmed={!deviceOnline} />
+              <MetricCard label="Current" value={formatNumber(dashboard.latest?.current, 'A', 3)} dimmed={!deviceOnline} />
+              <MetricCard label="Apparent power" value={formatNumber(dashboard.latest?.apparentPowerVa, 'VA')} dimmed={!deviceOnline} />
+              <MetricCard label="Power factor" value={formatNumber(dashboard.latest?.powerFactor, undefined, 2)} dimmed={!deviceOnline} />
+              <MetricCard label="Frequency" value={formatNumber(dashboard.latest?.frequency, 'Hz', 1)} dimmed={!deviceOnline} />
+              <MetricCard label="Meter energy" value={formatNumber(dashboard.latest?.energyKwh, 'kWh', 4)} dimmed={!deviceOnline} />
               <MetricCard label="Room rate" value={`${formatCurrency(dashboard.room.ratePerKwh)}/kWh`} />
             </View>
 
@@ -190,6 +203,7 @@ const styles = StyleSheet.create({
   subtitle: { color: theme.colors.textMuted, fontSize: 12 },
   liveRow: { flexDirection: 'row', gap: 7, alignItems: 'center' },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.success },
+  offlineDot: { backgroundColor: theme.colors.danger },
   liveText: { color: theme.colors.textMuted, fontSize: 12 },
   loader: { marginTop: 50 },
   errorBox: { gap: 12, backgroundColor: '#361D24', borderColor: theme.colors.danger, borderWidth: 1, borderRadius: theme.radius.md, padding: 16 },
@@ -198,6 +212,8 @@ const styles = StyleSheet.create({
   sectionTitle: { color: theme.colors.text, fontSize: 18, fontWeight: '900', marginTop: 8 },
   sectionMeta: { color: theme.colors.textMuted, fontSize: 11, textAlign: 'right' },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
+  staleNotice: { backgroundColor: '#301D24', borderLeftColor: theme.colors.danger, borderLeftWidth: 4, borderRadius: theme.radius.sm, padding: 12 },
+  staleNoticeText: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 18 },
   notice: { backgroundColor: theme.colors.surface, borderColor: theme.colors.line, borderWidth: 1, borderRadius: theme.radius.md, padding: 15, gap: 5 },
   noticeTitle: { color: theme.colors.text, fontWeight: '800' },
   noticeText: { color: theme.colors.textMuted, lineHeight: 19, fontSize: 13 },
