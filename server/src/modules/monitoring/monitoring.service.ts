@@ -114,7 +114,7 @@ export async function listMonitoringRooms(user: AuthenticatedUser) {
           WHEN device.device_id IS NULL THEN NULL
           WHEN device.device_status = 'online'
             AND device.device_last_seen IS NOT NULL
-            AND device.device_last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+            AND device.device_last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
           THEN 'online'
           ELSE 'offline'
         END AS computed_status,
@@ -136,7 +136,7 @@ export async function listMonitoringRooms(user: AuthenticatedUser) {
       ${access.sql}
       ORDER BY room.room_name
     `,
-    [env.DEVICE_OFFLINE_MINUTES, ...access.values],
+    [env.MONITORING_OFFLINE_SECONDS, ...access.values],
   );
 
   return rows.map((row) => ({
@@ -173,7 +173,7 @@ async function getMonitoringRoom(user: AuthenticatedUser, roomId: number) {
           WHEN device.device_id IS NULL THEN NULL
           WHEN device.device_status = 'online'
             AND device.device_last_seen IS NOT NULL
-            AND device.device_last_seen >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+            AND device.device_last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
           THEN 'online'
           ELSE 'offline'
         END AS computed_status,
@@ -185,7 +185,7 @@ async function getMonitoringRoom(user: AuthenticatedUser, roomId: number) {
       WHERE room.room_id = ?
       LIMIT 1
     `,
-    [env.DEVICE_OFFLINE_MINUTES, roomId],
+    [env.MONITORING_OFFLINE_SECONDS, roomId],
   );
 
   const row = rooms[0];

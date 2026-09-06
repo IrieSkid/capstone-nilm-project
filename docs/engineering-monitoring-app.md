@@ -41,6 +41,11 @@ Historical data is downsampled for display. Report exports use the server's
 downsampled readings and summary calculations rather than querying the database
 from the phone.
 
+The network firmware uploads every three seconds. The engineering interface
+marks a device offline after 15 seconds without a successful upload (five
+missed upload intervals). This is independently configurable through
+`MONITORING_OFFLINE_SECONDS` in `server/.env`.
+
 ## Calculation boundaries
 
 - Apparent power is calculated as `voltage × current`.

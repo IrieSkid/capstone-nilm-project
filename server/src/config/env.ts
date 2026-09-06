@@ -29,6 +29,7 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('*'),
   DETECTION_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.65),
   DEVICE_OFFLINE_MINUTES: z.coerce.number().int().positive().default(15),
+  MONITORING_OFFLINE_SECONDS: z.coerce.number().int().positive().default(15),
   NOTIFICATION_JOB_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
   FEEDER_PORT: z.coerce.number().int().positive().default(4010),
   FEEDER_DEFAULT_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
